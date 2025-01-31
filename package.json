@@ -1,0 +1,20 @@
+{
+  "name": "Fortuna RNG by Mikh",
+  "version": "1.0.0",
+  "description": "A JavaScript library for cryptographic operations using Fortuna RNG",
+  "main": "js/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.cjs",
+    "test": "node js/statisticalTests.js",
+    "testfile": "node js/test.js"
+  },
+  "dependencies": {
+    "cli-progress": "^3.12.0",
+    "express": "^4.17.1",
+    "file-saver": "^2.0.5",
+    "ansi-colors": "^4.1.1"
+  },
+  "author": "Mikhail Agafonov",
+  "license": "Apache 2.0"
+}
