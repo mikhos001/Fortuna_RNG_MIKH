@@ -7,11 +7,6 @@ import colors from 'ansi-colors';
 // Создаем экземпляр FortunaRNG
 const rng = new FortunaRNG();
 
-// Добавляем достаточное количество энтропии в разные пулы
-for (let i = 0; i < 64; i++) {
-    rng.addEntropy(new Uint8Array(32)); // Добавляем 32 байта энтропии циклически по пулам
-}
-
 // Создаем прогресс-бар
 const progressBar = new cliProgress.SingleBar({
     format: 'Progress |' + colors.cyan('{bar}') + '| ' + colors.green('{percentage}%') + ' || ' + colors.yellow('{value}/{total} Tasks') + ' || ' + colors.magenta('{task}') + ' || ' + colors.blue('{duration_formatted} elapsed') + ' || ' + colors.red('{eta_formatted} remaining'),
@@ -40,24 +35,14 @@ function getSpinner() {
 
 // Функция для генерации случайного числа в заданном диапазоне
 async function generateRandomNumber(range) {
-    const randomBytes = await rng.generateRandomBytes(4);
-    const randomNumber = new DataView(randomBytes.buffer).getUint32(0, true);
-    return randomNumber % range;
+    return rng.generateInt32(0, range - 1);
 }
 
 // Функция для генерации случайных чисел и сохранения их в файл
 async function generateNumbersToFile(filename, count, range) {
     const task = `Генерация файла ${filename}`;
     updateProgressBar(task);
-    const numbers = [];
-    for (let i = 0; i < count; i++) {
-        const number = await generateRandomNumber(range);
-        numbers.push(number);
-        if (i % 1000000 === 0 && i !== 0) {
-            updateProgressBar(task);
-        }
-    }
-
+    const numbers = rng.generateInt32Batch(count, 0, range - 1);
     const filePath = path.join('result', filename);
     await fs.writeFile(filePath, numbers.join('\n'), 'utf8');
     completedTasks++;
@@ -69,7 +54,7 @@ async function generateBinaryFile(filename, sizeInMB) {
     const task = `Генерация бинарного файла ${filename}`;
     updateProgressBar(task);
     const sizeInBytes = sizeInMB * 1024 * 1024;
-    const randomBytes = await rng.generateRandomBytes(sizeInBytes);
+    const randomBytes = await rng.generate(sizeInBytes, 1024);
 
     const filePath = path.join('result', filename);
     await fs.writeFile(filePath, randomBytes);
@@ -93,26 +78,24 @@ const spinnerInterval = setInterval(() => {
     progressBar.update(completedTasks, { task: `${currentTask} ${getSpinner()}` });
 }, 100);
 
-// Параллельная запись файлов
-await Promise.all([
-    // Тест 1: Создание 4 файлов "бинарного" вывода из RNG по 10 МБ каждый
-    generateBinaryFile('binary_output_1.bin', 10),
-    generateBinaryFile('binary_output_2.bin', 10),
-    generateBinaryFile('binary_output_3.bin', 10),
-    generateBinaryFile('binary_output_4.bin', 10),
 
-    // Тест 2 (Cosmotrip): Создание файла с 10 млн строк (число на строку) в диапазоне 0-9901
-    generateNumbersToFile('cosmotrip.txt', 10000000, 9902),
+// Тест 1: Создание 4 файлов "бинарного" вывода из RNG по 10 МБ каждый
+await generateBinaryFile('binary_output_1.bin', 10);
+await generateBinaryFile('binary_output_2.bin', 10);
+await generateBinaryFile('binary_output_3.bin', 10);
+await generateBinaryFile('binary_output_4.bin', 10);
 
-    // Тест 3 (Fortune): Создание файла с 10 млн строк (число на строку) в диапазоне 0-55
-    generateNumbersToFile('wheel_of_fortune.txt', 10000000, 56),
+// Тест 2 (Cosmotrip): Создание файла с 10 млн строк (число на строку) в диапазоне 0-9901
+await generateNumbersToFile('cosmotrip.txt', 10000000, 9902);
 
-    // Тест 4 (two-up): Создание файла с 10 млн строк (число на строку) в диапазоне 0-1
-    generateNumbersToFile('two_up.txt', 10000000, 2),
+// Тест 3 (Fortune): Создание файла с 10 млн строк (число на строку) в диапазоне 0-55
+await generateNumbersToFile('wheel_of_fortune.txt', 10000000, 56);
 
-    // Тест 5 (blackjackone): Создание файла с 10 млн строк (число на строку) в диапазоне 0-416
-    generateNumbersToFile('blackjack_one.txt', 10000000, 417)
-]);
+// Тест 4 (two-up): Создание файла с 10 млн строк (число на строку) в диапазоне 0-1
+await generateNumbersToFile('two_up.txt', 10000000, 2);
+
+// Тест 5 (blackjackone): Создание файла с 10 млн строк (число на строку) в диапазоне 0-416
+await generateNumbersToFile('blackjack_one.txt', 10000000, 417);
 
 progressBar.stop();
 clearInterval(spinnerInterval);

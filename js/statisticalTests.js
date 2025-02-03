@@ -3,14 +3,9 @@ import FortunaRNG from './FortunaRNG.js';
 // Создаем экземпляр FortunaRNG
 const rng = new FortunaRNG();
 
-// Добавляем энтропию в разные пулы
-for (let i = 0; i < 64; i++) {
-    rng.addEntropy(new Uint8Array(32)); // Добавляем 32 байта энтропии циклически по пулам
-}
-
 // Функция для генерации случайных битов
 async function generateRandomBits(length) {
-    const randomBytes = await rng.generateRandomBytes(Math.ceil(length / 8));
+    const randomBytes = await rng.generate(Math.ceil(length / 8));
     const randomBits = [];
     for (let byte of randomBytes) {
         for (let i = 7; i >= 0; i--) {
@@ -66,6 +61,36 @@ function erf(x) {
     return sign * y;
 }
 
+// Функция для тестирования распределения и расчёта энтропии
+function testDistributionAndEntropy(sampleCount = 1000000) {
+    const rng = new FortunaRNG();
+
+    // Массив для подсчёта частот значений от 0 до 100
+    const frequency = new Array(101).fill(0);
+
+    // Генерируем sampleCount случайных чисел в диапазоне 0-100
+    for (let i = 0; i < sampleCount; i++) {
+        const number = rng.generateInt32(0, 101);
+        frequency[number]++;
+    }
+
+    // Вычисляем энтропию по Шеннону
+    let entropy = 0;
+    for (let i = 0; i <= 100; i++) {
+        const p = frequency[i] / sampleCount;
+        if (p > 0) {
+            entropy -= p * Math.log2(p);
+        }
+    }
+
+
+    // Выводим распределение и рассчитанную энтропию
+    console.log('Выборка:', sampleCount);
+    console.log('Распределение частот для чисел 0-100:', frequency.join(','));
+    console.log(`Оценочная энтропия (по Шеннону): ${entropy.toFixed(4)}`);
+}
+
+
 // Генерируем случайные биты и выполняем тесты
 async function runTests() {
     const bits = await generateRandomBits(1000000); // Генерируем 1 миллион случайных битов
@@ -75,6 +100,8 @@ async function runTests() {
 
     const runsPValue = runsTest(bits);
     console.log(`Runs Test p-value: ${runsPValue}`);
+
+    testDistributionAndEntropy();
 }
 
 runTests();
