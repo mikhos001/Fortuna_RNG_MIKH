@@ -49,7 +49,7 @@ async function generateBinaryFile(filename, sizeInMB) {
     const task = `Генерация бинарного файла ${filename}`;
     updateProgressBar(task);
     const sizeInBytes = sizeInMB * 1024 * 1024;
-    const randomBytes = await rng.generate(sizeInBytes, 1024);
+    const randomBytes = await rng.generate(sizeInBytes);
 
     const filePath = path.join('result', filename);
     await fs.writeFile(filePath, randomBytes);
@@ -73,7 +73,7 @@ async function generateBinaryFile(filename, sizeInMB) {
 //         // Удаляем индекс из массива и возвращаем его
 //         return deck.splice(randomIndex, 1)[0];
 //     };
-    
+
 // }
 
 // Функция для генерации случайного числа в заданном диапазоне range shufle
@@ -136,7 +136,7 @@ await generateNumbersToFile('cardShafl1deks.txt', 10000000, 51, 0)
 await generateNumbersToFile('cardShafl8deks.txt', 10000000, 415, 0)
 
 // Тест 6 (Crash): Создание файла с 10 млн строк (число на строку) в диапазоне 0-9900
-await generateNumbersToFile('crash.txt', 10000000, 9900,0);
+await generateNumbersToFile('crash.txt', 10000000, 9900, 0);
 
 // Тест 7 (Mines): Создание файла с 10 млн строк (число на строку) в диапазоне 0-249
 await generateNumbersToFile('mines.txt', 10000000, 249, 0);

@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 
-
 // FortunaRNG: A simple implementation of the Fortuna PRNG algorithm.
 class FortunaRNG {
     constructor() {
@@ -150,23 +149,18 @@ class FortunaRNG {
      * After generating output, it performs rekeying by deriving a new key from cipher output.
      *
      * @param {number} numBytes - Number of random bytes requested.
-     * @param {number} [blockSize=16] - Block size to use (default is 16 bytes for AES).
      * @returns {Buffer} - Buffer containing numBytes of random data.
      */
-    generate(numBytes, blockSize = 16) {
+    generate(numBytes) {
         // Reseed if conditions indicate we should
         if (this.shouldReseed()) {
             this.reseed();
         }
 
-        // Calculate how many full AES blocks are required
-        const blocksNeeded = Math.ceil(numBytes / blockSize);
-        // Prepare a plaintext of zeros to encrypt (length is blocksNeeded * blockSize)
-        const plaintext = Buffer.alloc(blocksNeeded * blockSize, 0);
         // Create a new AES-256-CTR cipher using current key and counter
         const cipher = crypto.createCipheriv('aes-256-ctr', this.key, this.ctr);
         // Generate the keystream by encrypting the zeroed plaintext
-        let generated = cipher.update(plaintext);
+        let generated = cipher.update(Buffer.alloc(numBytes, 0));
         // Increment our counter for each block used in the output generation
         this.incrementCounter();
 
@@ -180,13 +174,45 @@ class FortunaRNG {
         ]);
         // Update the internal key with the newly derived key material.
         this.key = newKeyMaterial;
-        // Mix an extra 4 bytes of output into the entropy pool (helps recover if internal state is exposed)
-        this.addEntropy(cipher2.update(Buffer.alloc(4, 0)));
+
+        // Additional security step: Mix in extra entropy from the cipher output
+        this.addEntropy(cipher2.update(Buffer.alloc(8, 0)));
         // Increment counter once more to avoid any potential keystream reuse.
         this.incrementCounter();
 
         // Return exactly the requested number of bytes
         return generated.subarray(0, numBytes);
+    }
+
+    /**
+    * Generate a random 8-bit integer within the range [min, max).
+    * @param {number} [min=0]
+    * @param {number} [max=0xFF]
+    * @returns {number}
+    */
+    generateInt8(min = 0, max = 0xFF) {
+        const randBytes = this.generate(1);
+        const randInt = randBytes.readUInt8(0);
+        const range = max - min;
+        return min + (randInt % range);
+    }
+
+    /**
+     * Generate an array of random 8-bit integers within the range [min, max).
+     * @param {number} count - Number of random integers to generate.
+     * @param {number} [min=0]
+     * @param {number} [max=0xFF]
+     * @returns {number[]}
+     */
+    generateInt8Batch(count, min = 0, max = 0xFF) {
+        const buf = this.generate(count);
+        const result = [];
+        for (let i = 0; i < count; i++) {
+            const randInt = buf.readUInt8(i);
+            const range = max - min;
+            result.push(min + (randInt % range));
+        }
+        return result;
     }
 
     /**
@@ -197,23 +223,28 @@ class FortunaRNG {
      * @returns {number}
      */
     generateInt16(min = 0, max = 0xFFFF) {
-        const randBytes = this.generate(2, 2);
+        const randBytes = this.generate(2);
         const randInt = randBytes.readUInt16BE(0);
         const range = max - min;
         return min + (randInt % range);
     }
 
     /**
-     * Generate a random 8-bit integer within the range [min, max).
+     * Generate an array of random 16-bit integers within the range [min, max).
+     * @param {number} count - Number of random integers to generate.
      * @param {number} [min=0]
-     * @param {number} [max=0xFF]
-     * @returns {number}
+     * @param {number} [max=0xFFFF]
+     * @returns {number[]}
      */
-    generateInt8(min = 0, max = 0xFF) {
-        const randBytes = this.generate(1, 1);
-        const randInt = randBytes.readUInt8(0);
-        const range = max - min;
-        return min + (randInt % range);
+    generateInt16Batch(count, min = 0, max = 0xFFFF) {
+        const buf = this.generate(count * 2);
+        const result = [];
+        for (let i = 0; i < count; i++) {
+            const randInt = buf.readUInt16BE(i * 2);
+            const range = max - min;
+            result.push(min + (randInt % range));
+        }
+        return result;
     }
 
     /**
@@ -223,14 +254,21 @@ class FortunaRNG {
      * @returns {number}
      */
     generateInt32(min = 0, max = 0xFFFFFFFF) {
-        const randBytes = this.generate(4, 4);
+        const randBytes = this.generate(4);
         const randInt = randBytes.readUInt32BE(0);
         const range = max - min;
         return min + (randInt % range);
     }
 
+    /**
+     * Generate an array of random 32-bit integers within the range [min, max).
+     * @param {number} count 
+     * @param {number} min 
+     * @param {number} max 
+     * @returns {number[]}
+     */
     generateInt32Batch(count, min = 0, max = 0xFFFFFFFF) {
-        const buf = this.generate(count * 4, count * 4);
+        const buf = this.generate(count * 4);
         const result = [];
         for (let i = 0; i < count; i++) {
             const randInt = buf.readUInt32BE(i * 4);
@@ -249,11 +287,30 @@ class FortunaRNG {
      * @returns {number}
      */
     generateInt64(min = 0, max = 0xFFFFFFFFFFFFFFFF) {
-        const randBytes = this.generate(8, 8);
+        const randBytes = this.generate(8);
         // Use BigInt for 64-bit operations
         const randInt = randBytes.readBigUInt64BE(0);
         const range = BigInt(max) - BigInt(min);
         return Number(BigInt(min) + (randInt % range));
+    }
+
+    /**
+     * Generate an array of random 64-bit integers within the range [min, max).
+     * Note: Uses BigInt to represent 64-bit integers.
+     * @param {number} count - Number of random integers to generate.
+     * @param {bigint} [min=0n]
+     * @param {bigint} [max=0xFFFFFFFFFFFFFFFFn]
+     * @returns {bigint[]}
+     */
+    generateInt64Batch(count, min = 0n, max = 0xFFFFFFFFFFFFFFFFn) {
+        const buf = this.generate(count * 8);
+        const result = [];
+        for (let i = 0; i < count; i++) {
+            const randInt = buf.readBigUInt64BE(i * 8);
+            const range = max - min;
+            result.push(min + (randInt % range));
+        }
+        return result;
     }
 }
 
