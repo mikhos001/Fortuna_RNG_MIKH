@@ -17,15 +17,6 @@ This is a JavaScript library for cryptographic RNG (Fortuna).
 
 ## Usage
 
-### Running Tests
-
-#### Statistical Tests
-
-1. Run the statistical tests to check the randomness of the generated numbers:
-    ```sh
-    npm test
-    ```
-
 #### File Generation Tests
 
 1. Run tests and create files:
@@ -54,7 +45,6 @@ This is a JavaScript library for cryptographic RNG (Fortuna).
 - `package.json`: Project configuration and dependencies.
 - `js/FortunaRNG.js`: Implementation of the Fortuna RNG algorithm.
 - `js/test.js`: Script for generating random numbers and saving them to files for various tests.
-- `js/statisticalTests.js`: Script for running statistical tests on the generated random numbers.
 - `.gitignore`: Git ignore file to exclude `node_modules` and `result` directories.
 - `LICENSE`: License file for the project.
 
