@@ -42,7 +42,7 @@ async function generateRandomNumber(range) {
 async function generateNumbersToFile(filename, count, range) {
     const task = `Генерация файла ${filename}`;
     updateProgressBar(task);
-    const numbers = rng.generateInt32Batch(count, 0, range - 1);
+    const numbers = rng.generateInt32Batch(count, 0, range);
     const filePath = path.join('result', filename);
     await fs.writeFile(filePath, numbers.join('\n'), 'utf8');
     completedTasks++;
