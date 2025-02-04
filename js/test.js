@@ -57,48 +57,48 @@ async function generateBinaryFile(filename, sizeInMB) {
     updateProgressBar(`Файл ${filePath} успешно создан.`);
 }
 
-function shufleArr(range) {
-    // Создаем массив из range (номера от 1 до range)
-    const deck = Array.from({ length: range }, (_, index) => index + 1);
+// function shufleArr(range, startCount = 1) {
+//     // Создаем массив из range (номера от 1 до range)
+//     const deck = Array.from({ length: range }, (_, index) => index + 1);
 
-    // Возвращаем функцию, которая "вытягивает" случайное значение из массива (уникальное)
+//     // Возвращаем функцию, которая "вытягивает" случайное значение из массива (уникальное)
 
-    return function shufle() {
-        if (deck.length === 0) {
-            return null;
-        }
+//     return function shufle() {
+//         if (deck.length === 0) {
+//             return null;
+//         }
 
-        // Генерируем случайный индекс
-        const randomIndex = rng.generateInt32(0, deck.length - 1)
-        // Удаляем индекс из массива и возвращаем его
-        return deck.splice(randomIndex, 1)[0];
-    };
+//         // Генерируем случайный индекс
+//         const randomIndex = rng.generateInt32(startCount, deck.length - 1)
+//         // Удаляем индекс из массива и возвращаем его
+//         return deck.splice(randomIndex, 1)[0];
+//     };
     
-}
+// }
 
 // Функция для генерации случайного числа в заданном диапазоне range shufle
 
-async function generateNumbersToFileWithShufle(filename, count, range) {
-    const globalList = []
-    let shufle = shufleArr(range);
-    while (globalList.length < count) {
-        let cardNumber = shufle();
-        if (cardNumber !== null) {
-            globalList.push(cardNumber);
-        } else {
-            // Если карты закончились, создаем новую колоду
-            shufle = shufleArr(range);
-        }
-    }
-    // Удаляем избыток, если есть
-    if (globalList.length > count) {
-        globalList.length = count;
-    }
-    const filePath = path.join('result', filename);
-    await fs.writeFile(filePath, globalList.join('\n'), 'utf8');
-    completedTasks++;
-    updateProgressBar(`Файл ${filePath} успешно создан.`);
-}
+// async function generateNumbersToFileWithShufle(filename, count, range, startCount = 1) {
+//     const globalList = []
+//     let shufle = shufleArr(range, startCount);
+//     while (globalList.length < count) {
+//         let cardNumber = shufle();
+//         if (cardNumber !== null) {
+//             globalList.push(cardNumber);
+//         } else {
+//             // Если карты закончились, создаем новую колоду
+//             shufle = shufleArr(range);
+//         }
+//     }
+//     // Удаляем избыток, если есть
+//     if (globalList.length > count) {
+//         globalList.length = count;
+//     }
+//     const filePath = path.join('result', filename);
+//     await fs.writeFile(filePath, globalList.join('\n'), 'utf8');
+//     completedTasks++;
+//     updateProgressBar(`Файл ${filePath} успешно создан.`);
+// }
 
 // Создаем директорию result, если она не существует
 try {
@@ -126,20 +126,20 @@ await generateBinaryFile('binary_output_4.bin', 10);
 // Тест 2 (Dice): Создание файла с 10 млн строк (число на строку) в диапазоне 1-6
 await generateNumbersToFile('dice.txt', 10000000, 6);
 
-// Тест 3 (Slot): Создание файла с 10 млн строк (число на строку) в диапазоне 1-500
-await generateNumbersToFile('slot.txt', 10000000, 500);
+// Тест 3 (Slot): Создание файла с 10 млн строк (число на строку) в диапазоне 0-499
+await generateNumbersToFile('slot.txt', 10000000, 499, 0);
 
-// Тест 4 (Card shuffle deck 1): Создание файла с 10 млн строк (число на строку) в диапазоне 1-52
-await generateNumbersToFileWithShufle('cardShafl1deks.txt', 10000000, 52)
+// Тест 4 (Card shuffle deck 1): Создание файла с 10 млн строк (число на строку) в диапазоне 0-51
+await generateNumbersToFile('cardShafl1deks.txt', 10000000, 51, 0)
 
-// Тест 5 (Card shuffle deck 8): Создание файла с 10 млн строк (число на строку) в диапазоне 1-416
-await generateNumbersToFileWithShufle('cardShafl8deks.txt', 10000000, 416)
+// Тест 5 (Card shuffle deck 8): Создание файла с 10 млн строк (число на строку) в диапазоне 0-415
+await generateNumbersToFile('cardShafl8deks.txt', 10000000, 415, 0)
 
-// Тест 6 (Crash): Создание файла с 10 млн строк (число на строку) в диапазоне 1-9901
-await generateNumbersToFile('crash.txt', 10000000, 9901);
+// Тест 6 (Crash): Создание файла с 10 млн строк (число на строку) в диапазоне 0-9900
+await generateNumbersToFile('crash.txt', 10000000, 9900,0);
 
-// Тест 7 (Mines): Создание файла с 10 млн строк (число на строку) в диапазоне 1-250
-await generateNumbersToFile('mines.txt', 10000000, 250);
+// Тест 7 (Mines): Создание файла с 10 млн строк (число на строку) в диапазоне 0-249
+await generateNumbersToFile('mines.txt', 10000000, 249, 0);
 
 // Тест 8 (Plinko): Создание файла с 10 млн строк (число на строку) в диапазоне 0-1
 await generateNumbersToFile('plinko.txt', 10000000, 1, 0);
@@ -147,14 +147,14 @@ await generateNumbersToFile('plinko.txt', 10000000, 1, 0);
 // Тест 9 (two-up): Создание файла с 10 млн строк (число на строку) в диапазоне 0-1
 await generateNumbersToFile('two_up.txt', 10000000, 1, 0);
 
-// Тест 10 (Wheel of Fortune): Создание файла с 10 млн строк (число на строку) в диапазоне 1-56
-await generateNumbersToFile('wheel_of_fortune.txt', 10000000, 56);
+// Тест 10 (Wheel of Fortune): Создание файла с 10 млн строк (число на строку) в диапазоне 0-53
+await generateNumbersToFile('wheel_of_fortune.txt', 10000000, 53, 0);
 
 // Тест 11 (Keno): Создание файла с 10 млн строк (число на строку) в диапазоне 1-40
-await generateNumbersToFileWithShufle('keno.txt', 10000000, 40)
+await generateNumbersToFile('keno.txt', 10000000, 40, 1);
 
-// Тест 12 (Roulette): Создание файла с 10 млн строк (число на строку) в диапазоне 1-38
-await generateNumbersToFile('Roulette.txt', 10000000, 38);
+// Тест 12 (Roulette): Создание файла с 10 млн строк (число на строку) в диапазоне 0-37
+await generateNumbersToFile('Roulette.txt', 10000000, 37, 0);
 
 
 progressBar.stop();
