@@ -36,7 +36,7 @@ This is a JavaScript library for cryptographic RNG (Fortuna).
     Criteria:
     - **Test 1**: Create 4 binary output files from RNG, each 10MB
     - **Test 2 (Dice)**: Create a file with 10 million lines (one number per line) in the range 1-6
-    - **Test 3 (Slot)**: Create a file with 10 million lines (one number per line) in the range 0-500
+    - **Test 3 (Slot)**: Create a file with 10 million lines (one number per line) in the range 1-500
     - **Test 4 (Card shuffle deck 1)**: Create a file with 10 million lines (one number per line) in the range 1-52
     - **Test 5 (Card shuffle deck 8)**: Create a file with 10 million lines (one number per line) in the range 1-416
     - **Test 6 (Crash)**: Create a file with 10 million lines (one number per line) in the range 1-9901
