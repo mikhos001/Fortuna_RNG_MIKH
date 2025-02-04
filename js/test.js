@@ -33,16 +33,11 @@ function getSpinner() {
     return spinnerFrames[spinnerIndex];
 }
 
-// Функция для генерации случайного числа в заданном диапазоне
-async function generateRandomNumber(range) {
-    return rng.generateInt32(0, range -1 );
-}
-
 // Функция для генерации случайных чисел и сохранения их в файл
-async function generateNumbersToFile(filename, count, range) {
+async function generateNumbersToFile(filename, count, range, startCount = 1) {
     const task = `Генерация файла ${filename}`;
     updateProgressBar(task);
-    const numbers = rng.generateInt32Batch(count, 0, range);
+    const numbers = rng.generateInt32Batch(count, startCount, range + 1);
     const filePath = path.join('result', filename);
     await fs.writeFile(filePath, numbers.join('\n'), 'utf8');
     completedTasks++;
@@ -128,37 +123,37 @@ await generateBinaryFile('binary_output_2.bin', 10);
 await generateBinaryFile('binary_output_3.bin', 10);
 await generateBinaryFile('binary_output_4.bin', 10);
 
-// Тест 2 (Dice): Создание файла с 10 млн строк (число на строку) в диапазоне 0-6
-await generateNumbersToFile('dice.txt', 10000000, 7);
+// Тест 2 (Dice): Создание файла с 10 млн строк (число на строку) в диапазоне 1-6
+await generateNumbersToFile('dice.txt', 10000000, 6);
 
-// Тест 3 (Slot): Создание файла с 10 млн строк (число на строку) в диапазоне 0-499
+// Тест 3 (Slot): Создание файла с 10 млн строк (число на строку) в диапазоне 1-500
 await generateNumbersToFile('slot.txt', 10000000, 500);
 
-// Тест 4 (Card): Создание файла с 10 млн строк (число на строку) в диапазоне 0-53
-await generateNumbersToFileWithShufle('cardShafl1deks.txt', 10000000, 54)
+// Тест 4 (Card shuffle deck 1): Создание файла с 10 млн строк (число на строку) в диапазоне 1-52
+await generateNumbersToFileWithShufle('cardShafl1deks.txt', 10000000, 52)
 
-// Тест 5 (Card): Создание файла с 10 млн строк (число на строку) в диапазоне 0-415
+// Тест 5 (Card shuffle deck 8): Создание файла с 10 млн строк (число на строку) в диапазоне 1-416
 await generateNumbersToFileWithShufle('cardShafl8deks.txt', 10000000, 416)
 
-// Тест 6 (Crash): Создание файла с 10 млн строк (число на строку) в диапазоне 0-9901
-await generateNumbersToFile('crash.txt', 10000000, 9902);
+// Тест 6 (Crash): Создание файла с 10 млн строк (число на строку) в диапазоне 1-9901
+await generateNumbersToFile('crash.txt', 10000000, 9901);
 
-// Тест 7 (Mines): Создание файла с 10 млн строк (число на строку) в диапазоне 0-249
+// Тест 7 (Mines): Создание файла с 10 млн строк (число на строку) в диапазоне 1-250
 await generateNumbersToFile('mines.txt', 10000000, 250);
 
 // Тест 8 (Plinko): Создание файла с 10 млн строк (число на строку) в диапазоне 0-1
-await generateNumbersToFile('plinko.txt', 10000000, 2);
+await generateNumbersToFile('plinko.txt', 10000000, 1, 0);
 
 // Тест 9 (two-up): Создание файла с 10 млн строк (число на строку) в диапазоне 0-1
-await generateNumbersToFile('two_up.txt', 10000000, 2);
+await generateNumbersToFile('two_up.txt', 10000000, 1, 0);
 
-// Тест 10 (Wheel of Fortune): Создание файла с 10 млн строк (число на строку) в диапазоне 0-55
+// Тест 10 (Wheel of Fortune): Создание файла с 10 млн строк (число на строку) в диапазоне 1-56
 await generateNumbersToFile('wheel_of_fortune.txt', 10000000, 56);
 
-// Тест 11 (keno): Создание файла с 10 млн строк (число на строку) в диапазоне 0-39
+// Тест 11 (Keno): Создание файла с 10 млн строк (число на строку) в диапазоне 1-40
 await generateNumbersToFileWithShufle('keno.txt', 10000000, 40)
 
-// Тест 12 (Roulette): Создание файла с 10 млн строк (число на строку) в диапазоне 0-37
+// Тест 12 (Roulette): Создание файла с 10 млн строк (число на строку) в диапазоне 1-38
 await generateNumbersToFile('Roulette.txt', 10000000, 38);
 
 
