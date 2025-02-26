@@ -1,6 +1,6 @@
 {
   "name": "fortuna-rng-by-mikh",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A JavaScript library for cryptographic operations using Fortuna RNG",
   "main": "js/FortunaRNG.js",
   "type": "module",

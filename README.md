@@ -1,8 +1,11 @@
 # RNG Fortuna by Mikh
 
 This is a JavaScript library for cryptographic RNG (Fortuna).
-
-## Installation
+## Installation from node.js
+```
+npm i fortuna-rng-by-mikh
+```
+## Installation from git
 
 1. Clone the repository:
     ```sh
