@@ -1,5 +1,5 @@
 {
-  "name": "Fortuna RNG by Mikh",
+  "name": "fortuna-rng-by-mikh",
   "version": "1.0.0",
   "description": "A JavaScript library for cryptographic operations using Fortuna RNG",
   "main": "js/FortunaRNG.js",
