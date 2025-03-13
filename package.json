@@ -1,18 +1,28 @@
 {
   "name": "fortuna-rng-by-mikh",
-  "version": "1.0.1",
-  "description": "A JavaScript library for cryptographic operations using Fortuna RNG",
-  "main": "js/FortunaRNG.js",
-  "type": "module",
+  "version": "1.1.0",
+  "description": "A TypeScript library for cryptographic operations using Fortuna RNG",
+  "author": "Mikhail Agafonov",
+  "license": "Apache 2.0",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "files": [
+    "lib/**/*"
+  ],
   "scripts": {
-    "test": "node js/statisticalTests.js",
-    "testfile": "node js/test.js"
+    "format": "prettier --write src/**/*.ts",
+    "build": "rimraf ./lib && tsc",
+    "test": "ts-node ./test/test.ts"
   },
-  "dependencies": {
+  "devDependencies": {
+    "@types/cli-progress": "^3.11.6",
+    "@types/node": "^16.18.126",
+    "ansi-colors": "^4.1.1",
     "cli-progress": "^3.12.0",
     "file-saver": "^2.0.5",
-    "ansi-colors": "^4.1.1"
-  },
-  "author": "Mikhail Agafonov",
-  "license": "Apache 2.0"
+    "prettier": "^2.4.1",
+    "rimraf": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.2.2"
+  }
 }
