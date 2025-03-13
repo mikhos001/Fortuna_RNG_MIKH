@@ -46,8 +46,8 @@ npm i fortuna-rng-by-mikh
 ## Project Structure
 
 - `package.json`: Project configuration and dependencies.
-- `js/FortunaRNG.js`: Implementation of the Fortuna RNG algorithm.
-- `js/test.js`: Script for generating random numbers and saving them to files for various tests.
+- `src/index.ts`: Implementation of the Fortuna RNG algorithm.
+- `test/test.ts`: Script for generating random numbers and saving them to files for various tests.
 - `.gitignore`: Git ignore file to exclude `node_modules` and `result` directories.
 - `LICENSE`: License file for the project.
 
