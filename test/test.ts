@@ -58,7 +58,7 @@ import FortunaRNG from '../src';
     async function generateNumbersToFile(filename: string, count: number, range: number, startCount: number = 1) {
         const task = `Генерация файла ${filename}`;
         updateProgressBar(task);
-        const numbers = rng.generateInt32Batch(count, startCount, range + 1);
+        const numbers = await rng.generateInt32Batch(count, startCount, range + 1);
         const filePath = path.join('result', filename);
         await fs.writeFile(filePath, numbers.join('\n'), 'utf8');
         completedTasks++;

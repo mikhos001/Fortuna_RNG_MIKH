@@ -353,7 +353,7 @@ class FortunaRNG {
    * @param n The total number of bytes to generate. Can be larger than MAX_GENERATE_BYTES.
    * @returns A Buffer containing n bytes of pseudorandom data.
    */
-  public generate(n: number): Buffer {
+  public async generate(n: number): Promise<Buffer> {
     if (!Number.isInteger(n) || n < 0) {
       throw new Error("Number of bytes 'n' must be a non-negative integer.");
     }
@@ -388,6 +388,9 @@ class FortunaRNG {
 
       // Decrease the remaining byte count
       bytesRemaining -= chunkSize;
+
+      // Sleep to avoid blocking the event loop for too long
+      await this.sleep();
     }
 
     // Concatenate all generated chunks into a single buffer
@@ -404,7 +407,7 @@ class FortunaRNG {
  * @param max The maximum inclusive value for each integer.
  * @returns An array of random integers within the specified range.
  */
-  public generateInt32Batch(count: number, min: number, max: number): number[] {
+  public async generateInt32Batch(count: number, min: number, max: number): Promise<number[]> {
     if (!Number.isInteger(count) || count < 0) {
       throw new Error("count must be a non-negative integer.");
     }
@@ -450,7 +453,7 @@ class FortunaRNG {
         const bytesNeededEstimate = Math.max(BATCH_SIZE_BYTES, (count - resultsGenerated) * 4 * 2);
         // Ensure we don't request more than the generator's single call limit if generate wasn't modified
         // (Assuming generate handles large requests now)
-        randomBuffer = this.generate(bytesNeededEstimate);
+        randomBuffer = await this.generate(bytesNeededEstimate);
         bufferOffset = 0; // Reset offset for the new buffer
 
         if (randomBuffer.length < 4) {
@@ -470,8 +473,24 @@ class FortunaRNG {
         resultsGenerated++;
       }
       // If rnd >= limit, it's rejected, and we simply loop to get the next value
+
+      // Sleep to avoid blocking the event loop for too long
+      await this.sleep();
     }
     return results;
+  }
+
+  /**
+   * Sleep for a short duration to avoid blocking the event loop.
+   * This is used to prevent the generator from hogging CPU time
+   * during large generation requests or when adding random events.
+   */
+  private async sleep() {
+    await new Promise<void>(resolve => {
+      setTimeout(() => {
+        resolve();
+      }, 1);
+    })
   }
 }
 
