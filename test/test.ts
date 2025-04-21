@@ -14,6 +14,7 @@ import FortunaRNG from '../src';
     let seqCounter = 0;
 
     function addRandomEvent() {
+        console.log('addRandomEvent');
         rng.addRandomEvent(
             0,
             crypto.randomInt(32),
@@ -64,19 +65,6 @@ import FortunaRNG from '../src';
         updateProgressBar(`Файл ${filePath} успешно создан.`);
     }
 
-    // Функция для генерации бинарных данных и сохранения их в файл
-    async function generateBinaryFile(filename: string, sizeInMB: number) {
-        const task = `Генерация бинарного файла ${filename}`;
-        updateProgressBar(task);
-        const sizeInBytes = sizeInMB * 1024 * 1024;
-        const randomBytes = await rng.generate(sizeInBytes);
-
-        const filePath = path.join('result', filename);
-        await fs.writeFile(filePath, randomBytes);
-        completedTasks++;
-        updateProgressBar(`Файл ${filePath} успешно создан.`);
-    }
-
     try {
         await fs.access('result');
     } catch (error) {
@@ -93,44 +81,38 @@ import FortunaRNG from '../src';
     }, 100);
 
 
-    // Тест 1: Создание 4 файлов "бинарного" вывода из RNG по 10 МБ каждый
-    await generateBinaryFile('binary_output_1.bin', 10);
-    await generateBinaryFile('binary_output_2.bin', 10);
-    await generateBinaryFile('binary_output_3.bin', 10);
-    await generateBinaryFile('binary_output_4.bin', 10);
+    // Тест 1 (Dice): Создание файла с 1 млн строк (число на строку) в диапазоне 1-6
+    await generateNumbersToFile('dice.txt', 1000000, 6);
 
-    // Тест 2 (Dice): Создание файла с 10 млн строк (число на строку) в диапазоне 1-6
-    await generateNumbersToFile('dice.txt', 10000000, 6);
+    // Тест 2 (Slot): Создание файла с 1 млн строк (число на строку) в диапазоне 0-499
+    await generateNumbersToFile('slot.txt', 1000000, 499, 0);
 
-    // Тест 3 (Slot): Создание файла с 10 млн строк (число на строку) в диапазоне 0-499
-    await generateNumbersToFile('slot.txt', 10000000, 499, 0);
+    // Тест 3 (Card shuffle deck 1): Создание файла с 1 млн строк (число на строку) в диапазоне 0-51
+    await generateNumbersToFile('cardShafl1deks.txt', 1000000, 51, 0)
 
-    // Тест 4 (Card shuffle deck 1): Создание файла с 10 млн строк (число на строку) в диапазоне 0-51
-    await generateNumbersToFile('cardShafl1deks.txt', 10000000, 51, 0)
+    // Тест 4 (Card shuffle deck 8): Создание файла с 1 млн строк (число на строку) в диапазоне 0-415
+    await generateNumbersToFile('cardShafl8deks.txt', 1000000, 415, 0)
 
-    // Тест 5 (Card shuffle deck 8): Создание файла с 10 млн строк (число на строку) в диапазоне 0-415
-    await generateNumbersToFile('cardShafl8deks.txt', 10000000, 415, 0)
+    // Тест 5 (Crash): Создание файла с 1 млн строк (число на строку) в диапазоне 0-9900
+    await generateNumbersToFile('crash.txt', 1000000, 9900, 0);
 
-    // Тест 6 (Crash): Создание файла с 10 млн строк (число на строку) в диапазоне 0-9900
-    await generateNumbersToFile('crash.txt', 10000000, 9900, 0);
+    // Тест 6 (Mines): Создание файла с 1 млн строк (число на строку) в диапазоне 0-249
+    await generateNumbersToFile('mines.txt', 1000000, 249, 0);
 
-    // Тест 7 (Mines): Создание файла с 10 млн строк (число на строку) в диапазоне 0-249
-    await generateNumbersToFile('mines.txt', 10000000, 249, 0);
+    // Тест 7 (Plinko): Создание файла с 1 млн строк (число на строку) в диапазоне 0-1
+    await generateNumbersToFile('plinko.txt', 1000000, 1, 0);
 
-    // Тест 8 (Plinko): Создание файла с 10 млн строк (число на строку) в диапазоне 0-1
-    await generateNumbersToFile('plinko.txt', 10000000, 1, 0);
+    // Тест 8 (two-up): Создание файла с 1 млн строк (число на строку) в диапазоне 0-1
+    await generateNumbersToFile('two_up.txt', 1000000, 1, 0);
 
-    // Тест 9 (two-up): Создание файла с 10 млн строк (число на строку) в диапазоне 0-1
-    await generateNumbersToFile('two_up.txt', 10000000, 1, 0);
+    // Тест 9 (Wheel of Fortune): Создание файла с 1 млн строк (число на строку) в диапазоне 0-53
+    await generateNumbersToFile('wheel_of_fortune.txt', 1000000, 53, 0);
 
-    // Тест 10 (Wheel of Fortune): Создание файла с 10 млн строк (число на строку) в диапазоне 0-53
-    await generateNumbersToFile('wheel_of_fortune.txt', 10000000, 53, 0);
+    // Тест 10 (Keno): Создание файла с 1 млн строк (число на строку) в диапазоне 1-40
+    await generateNumbersToFile('keno.txt', 1000000, 40, 1);
 
-    // Тест 11 (Keno): Создание файла с 10 млн строк (число на строку) в диапазоне 1-40
-    await generateNumbersToFile('keno.txt', 10000000, 40, 1);
-
-    // Тест 12 (Roulette): Создание файла с 10 млн строк (число на строку) в диапазоне 0-37
-    await generateNumbersToFile('Roulette.txt', 10000000, 37, 0);
+    // Тест 11 (Roulette): Создание файла с 1 млн строк (число на строку) в диапазоне 0-37
+    await generateNumbersToFile('Roulette.txt', 1000000, 37, 0);
 
 
     progressBar.stop();
