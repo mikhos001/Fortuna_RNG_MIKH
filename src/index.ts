@@ -1,235 +1,477 @@
-import assert from "assert";
-import crypto from "crypto";
+import * as crypto from 'crypto';
 
-// FortunaRNG: A simple implementation of the Fortuna PRNG algorithm.
+// Constants based on the text and AES-256
+const KEY_SIZE_BYTES = 32; // 256 bits
+const BLOCK_SIZE_BYTES = 16; // 128 bits
+const MAX_GENERATE_BYTES = 1 << 20; // 2^20 bytes (1 MiB) limit per request
+const NUM_POOLS = 32;
+const RESEED_INTERVAL_MS = 100; // Minimum time between reseeds
+const POOL_SIZE = 64; // Size of each pool in bytes
+
+// Constants for generateInt32
+const UINT32_MAX_COUNT = 0x100000000; // 2^32, the number of possible uint32 values
+
+/**
+ * FortunaRNG is a cryptographically secure random number generator
+ * based on the Fortuna algorithm. It uses AES-256 in ECB mode
+ * for block encryption and maintains multiple pools of entropy.
+ * The generator is reseeded periodically based on the amount of
+ * entropy collected and the time elapsed since the last reseed.
+ * 
+ * @link https://www.schneier.com/wp-content/uploads/2015/12/fortuna.pdf
+ */
 class FortunaRNG {
-  private readonly NUM_POOLS: number;
-  private readonly MIN_POOL_SIZE: number;
-  private readonly RESEED_INTERVAL_MS: number;
+  private generatorKey: Buffer;
+  private generatorCounter: Buffer;
   private pools: Buffer[];
-  private poolIndex: number;
-  private key: Uint8Array | null;
-  private ctr: Uint8Array;
-  private reseedCounter: number;
+  private reseedCount: number;
   private lastReseedTime: number;
+  private minPoolSize: number;
+  private seeded: boolean;
 
-  constructor() {
-    // CONSTANTS
-    this.NUM_POOLS = 32; // Total number of entropy pools
-    this.MIN_POOL_SIZE = 64; // Minimum bytes required in pool[0] to trigger reseed
-    this.RESEED_INTERVAL_MS = 1000; // Minimum interval (in ms) between reseeds
-
-    // Initialize 32 entropy pools as empty Buffers
-    this.pools = Array.from({ length: this.NUM_POOLS }, () => Buffer.alloc(0));
-    this.poolIndex = 0; // Next pool index for round-robin insertion
-
-    // Generator state: key is the AES-256 key (32 bytes) and is initially null
-    this.key = null;
-    // Initialize the counter with 16 random bytes (AES block size)
-    this.ctr = crypto.randomBytes(16);
-    // Count how many times we have reseeded (affects which pools get used)
-    this.reseedCounter = 0;
-    // Last reseed time in ms (used to enforce a minimum reseed interval)
-    this.lastReseedTime = Date.now();
-
-    // Bootstrap: Warm up all pools with initial entropy.
-    // In a production system, you would likely use a high-entropy OS source.
-    for (let i = 0; i < this.NUM_POOLS; i++) {
-      this.addEntropy(crypto.randomBytes(this.MIN_POOL_SIZE));
+  /**
+   * Initializes the Fortuna PRNG state.
+   * @param seed Initial seed data (optional).
+   */
+  constructor(seed?: Buffer) {
+    if (!seed) {
+      throw new Error("Seed data is required to initialize the generator.");
     }
+
+    this.minPoolSize = POOL_SIZE;
+    // Initialize Generator (key and counter to zero)
+    this.generatorKey = Buffer.alloc(KEY_SIZE_BYTES, 0);
+    this.generatorCounter = Buffer.alloc(BLOCK_SIZE_BYTES, 0);
+
+    // Initialize Pools (32 empty pools)
+    this.pools = Array(NUM_POOLS).fill(null).map(() => Buffer.alloc(0));
+
+    // Initialize Reseed tracking
+    this.reseedCount = 0;
+    this.lastReseedTime = 0;
+    this.seeded = false; // Mark as not seeded initially
+
+    // Set the initial seed
+    this.seedFromData(seed);
   }
 
   /**
-   * Increment the 16-byte counter (treated as a big-endian integer).
+   * Hashes data using SHA-256.
+   * @param data The data to hash.
+   * @returns The SHA-256 hash digest.
    */
-  incrementCounter() {
-    // Loop from the least-significant byte (end of Buffer) to most
-    for (let i = this.ctr.length - 1; i >= 0; i--) {
-      if (this.ctr[i] < 0xff) {
-        this.ctr[i]++;
-        break;
-      } else {
-        this.ctr[i] = 0;
+  private hash(data: Buffer): Buffer {
+    return crypto.createHash('sha256').update(data).digest();
+  }
+
+  /**
+   * Increments the 128-bit counter (treating it as big-endian).
+   */
+  private incrementCounter(): void {
+    for (let i = BLOCK_SIZE_BYTES - 1; i >= 0; i--) {
+      if (this.generatorCounter[i] < 255) {
+        this.generatorCounter[i]++;
+        return; // No carry-over needed
       }
+      // Carry-over
+      this.generatorCounter[i] = 0;
     }
   }
 
   /**
-   * Compute SHA-256 hash of the given data.
-   * @param {Buffer|string} data
-   * @returns {Buffer} 32-byte hash
+   * Encrypts a single block using AES-256-ECB with the current generator key.
+   * Used to encrypt the counter value.
+   * @param block The 16-byte block (counter) to encrypt.
+   * @returns The 16-byte encrypted block.
    */
-  sha256(data: Buffer) {
-    return crypto.createHash("sha256").update(data).digest();
+  private blockEncrypt(block: Buffer): Buffer {
+    if (!this.seeded && this.reseedCount === 0) {
+      // This check might be redundant if generateBlocks already checks seeded status
+      throw new Error("Generator not seeded yet.");
+    }
+    if (this.generatorKey.length !== KEY_SIZE_BYTES) {
+      throw new Error(`Internal error: Invalid key size ${this.generatorKey.length}`);
+    }
+    // Use ECB mode with no padding. The 'iv' argument is ignored for ECB but required by the API.
+    const cipher = crypto.createCipheriv('aes-256-ecb', this.generatorKey, null);
+    cipher.setAutoPadding(false); // CRITICAL: Disable padding
+    const encrypted = Buffer.concat([cipher.update(block), cipher.final()]);
+    if (encrypted.length !== BLOCK_SIZE_BYTES) {
+      // This should not happen with autoPadding disabled and correct block size input
+      throw new Error(`Internal error: Encryption output size mismatch (${encrypted.length})`);
+    }
+    return encrypted;
   }
 
   /**
-   * Add entropy data to the current pool.
-   * Data may be a string or Buffer.
-   * Uses round-robin insertion into the NUM_POOLS pools.
-   * If a pool grows too large (exceeding MIN_POOL_SIZE * 4), it is compressed.
-   * @param {Buffer|string} data
+   * Generates k blocks of pseudorandom data using the generator's current state.
+   * Corresponds to GENERATEBLOCKS in the text.
+   * @param k Number of 16-byte blocks to generate.
+   * @returns A Buffer containing k*16 bytes of pseudorandom data.
    */
-  addEntropy(data: string | Buffer) {
-    // Convert string input to Buffer using UTF-8 encoding
-    if (typeof data === "string") {
-      data = Buffer.from(data, "utf8");
-    } else if (!Buffer.isBuffer(data)) {
-      throw new Error("data must be a Buffer or a string");
+  private generateBlocks(k: number): Buffer {
+    if (!this.seeded) {
+      // Check if the generator has been seeded at least once
+      // The text uses C != 0 as the check, which means counter > 0
+      // We use a separate 'seeded' flag set during the first reseed.
+      throw new Error("Generator must be seeded before generating data.");
+    }
+    if (k <= 0) {
+      return Buffer.alloc(0);
     }
 
-    // If the current pool is not too large, append the new entropy
-    if (this.pools[this.poolIndex].length <= this.MIN_POOL_SIZE * 4) {
-      this.pools[this.poolIndex] = Buffer.concat([
-        this.pools[this.poolIndex],
-        data,
-      ]);
-    } else {
-      // Otherwise, compress the pool with the new data to bound its size.
-      this.pools[this.poolIndex] = this.sha256(
-        Buffer.concat([this.pools[this.poolIndex], data])
-      );
+    const output = Buffer.alloc(k * BLOCK_SIZE_BYTES);
+    for (let i = 0; i < k; i++) {
+      const encryptedBlock = this.blockEncrypt(this.generatorCounter);
+      encryptedBlock.copy(output, i * BLOCK_SIZE_BYTES);
+      this.incrementCounter();
     }
-    // Rotate to the next pool in round-robin fashion
-    this.poolIndex = (this.poolIndex + 1) % this.NUM_POOLS;
+    return output;
   }
 
   /**
-   * Determine whether the generator should be reseeded.
-   * Reseed if the generator has not yet been seeded (key is null) or if
-   * pool 0 has at least MIN_POOL_SIZE bytes and the reseed interval has elapsed.
-   * @returns {boolean}
+   * Generates n bytes of pseudorandom data and updates the generator key.
+   * Corresponds to PSEUDORANDOMDATA in the text.
+   * @param n Number of bytes to generate (max 1 MiB).
+   * @returns A Buffer containing n bytes of pseudorandom data.
    */
-  shouldReseed() {
-    // If key is null, perform bootstrap seeding.
-    if (this.key === null) {
-      // Mix current time and additional random bytes into pool 0.
-      this.addEntropy(
-        Buffer.concat([
-          Buffer.from(Date.now().toString(), "utf8"),
-          crypto.randomBytes(this.MIN_POOL_SIZE),
-        ])
-      );
-      // Bootstrap the key with 32 secure random bytes.
-      this.key = crypto.randomBytes(32);
-      return true;
+  private pseudoRandomData(n: number): Buffer {
+    if (n < 0 || n > MAX_GENERATE_BYTES) {
+      throw new Error(`Invalid number of bytes requested: ${n}. Max is ${MAX_GENERATE_BYTES}.`);
+    }
+    if (n === 0) {
+      return Buffer.alloc(0);
     }
 
-    const now = Date.now();
-    // Check if pool 0 has enough data and if the time interval has passed
-    if (
-      this.pools[0].length >= this.MIN_POOL_SIZE &&
-      now - this.lastReseedTime > this.RESEED_INTERVAL_MS
-    ) {
-      return true;
+    // Calculate number of blocks needed (ceiling division)
+    const blocksNeeded = Math.ceil(n / BLOCK_SIZE_BYTES);
+
+    // Generate the required random data
+    const generatedData = this.generateBlocks(blocksNeeded);
+
+    // Generate 2 more blocks for the new key (2 * 16 = 32 bytes = 256 bits)
+    const newKeyData = this.generateBlocks(2);
+    if (newKeyData.length !== KEY_SIZE_BYTES) {
+      throw new Error(`Internal error: Failed to generate correct size for new key (${newKeyData.length})`);
     }
-    return false;
+    this.generatorKey = newKeyData; // Update the key
+
+    // Return only the requested number of bytes
+    return generatedData.slice(0, n);
   }
 
   /**
-   * Reseed the generator by mixing entropy from the pools.
-   * According to Fortuna, pool i is used if reseedCounter mod 2^i === 0.
-   * After use, each pool is reset to empty.
-   * The new key is computed as sha256(oldKey || seedMaterial).
+   * Updates the generator's state (key and counter) with new seed material.
+   * Corresponds to RESEED in the text.
+   * @param seedData Additional seed material (e.g., concatenated pool hashes or seed file data).
    */
-  reseed() {
-    this.reseedCounter++;
-    let seedMaterial = Buffer.alloc(0);
+  private reseed(seedData: Buffer): void {
+    // K <- SHA-256(K || s)
+    this.generatorKey = this.hash(Buffer.concat([this.generatorKey, seedData]));
 
-    // For each pool, include its digest if the reseedCounter meets the condition.
-    for (let i = 0; i < this.NUM_POOLS; i++) {
-      // Include pool i if reseedCounter modulo (2^i) is 0
-      if (this.reseedCounter % 2 ** i === 0) {
-        const poolHash = this.sha256(this.pools[i]);
-        seedMaterial = Buffer.concat([seedMaterial, poolHash]);
-        // Reset the used pool to empty
-        this.pools[i] = Buffer.alloc(0);
-      }
-    }
-
-    // Mix in additional entropy from the current time.
-    const timeBuffer = Buffer.from(Date.now().toString(), "utf8");
-    seedMaterial = Buffer.concat([seedMaterial, this.sha256(timeBuffer)]);
-
-    // Update key: mix old key and collected seed material.
-    assert.ok(this.key);
-    this.key = this.sha256(Buffer.concat([this.key, seedMaterial]));
-    // Update the last reseed time.
-    this.lastReseedTime = Date.now();
-  }
-
-  /**
-   * Generate pseudorandom bytes.
-   * This method uses AES-256 in CTR mode with the current key and counter.
-   * After generating output, it performs rekeying by deriving a new key from cipher output.
-   *
-   * @param {number} numBytes - Number of random bytes requested.
-   * @returns {Buffer} - Buffer containing numBytes of random data.
-   */
-  generate(numBytes: number) {
-    // Reseed if conditions indicate we should
-    if (this.shouldReseed()) {
-      this.reseed();
-    }
-
-    assert.ok(this.key);
-
-    // Create a new AES-256-CTR cipher using current key and counter
-    const cipher = crypto.createCipheriv("aes-256-ctr", this.key, this.ctr);
-    // Generate the keystream by encrypting the zeroed plaintext
-    let generated = cipher.update(Buffer.alloc(numBytes, 0));
-    // Increment our counter for each block used in the output generation
+    // Increment counter C <- C + 1
     this.incrementCounter();
 
-    // Rekeying step:
-    // Create a new cipher instance with the same key and updated counter to derive new key material.
-    const cipher2 = crypto.createCipheriv("aes-256-ctr", this.key, this.ctr);
-    // Derive 32 bytes (two 16-byte blocks) of new key material.
-    const newKeyMaterial = Buffer.concat([
-      cipher2.update(Buffer.alloc(16, 0)),
-      cipher2.update(Buffer.alloc(16, 0)),
+    // Mark as seeded after the first reseed operation completes
+    if (!this.seeded) {
+      this.seeded = true;
+    }
+  }
+
+  /**
+   * Generates 4 raw random bytes and returns them as an unsigned 32-bit integer.
+   * @returns A random unsigned 32-bit integer (0 to 2^32 - 1).
+   */
+  private getRaw32(): number {
+    const buffer = this.randomData(4); // Get 4 random bytes
+    // Use Big Endian for consistency, though either works if used consistently
+    return buffer.readUInt32BE(0);
+  }
+
+
+  // --- Public Methods ---
+
+  /**
+   * Adds a random event from a source to a specified pool.
+   * Corresponds to ADDRANDOMEVENT in the text.
+   * The caller (entropy source) is responsible for choosing the correct poolId
+   * based on round-robin distribution.
+   * @param sourceId Source identifier (0-255).
+   * @param poolId Pool index (0-31).
+   * @param eventData The entropy data (1-32 bytes).
+   */
+  public addRandomEvent(sourceId: number, poolId: number, eventData: Buffer): void {
+    if (sourceId < 0 || sourceId > 255 || !Number.isInteger(sourceId)) {
+      throw new Error(`Invalid sourceId: ${sourceId}`);
+    }
+    if (poolId < 0 || poolId >= NUM_POOLS || !Number.isInteger(poolId)) {
+      throw new Error(`Invalid poolId: ${poolId}`);
+    }
+    const eventLen = eventData.length;
+    if (eventLen < 1 || eventLen > 32) {
+      // Text implies length 1..32 for event data 'e'
+      throw new Error(`Invalid eventData length: ${eventLen}. Must be between 1 and 32.`);
+    }
+
+    // Encode as: sourceId (1 byte) || length(eventData) (1 byte) || eventData
+    const encodedEvent = Buffer.concat([
+      Buffer.from([sourceId, eventLen]),
+      eventData
     ]);
-    // Update the internal key with the newly derived key material.
-    this.key = newKeyMaterial;
 
-    // Additional security step: Mix in extra entropy from the cipher output
-    this.addEntropy(cipher2.update(Buffer.alloc(8, 0)));
-    // Increment counter once more to avoid any potential keystream reuse.
-    this.incrementCounter();
-
-    // Return exactly the requested number of bytes
-    return generated.subarray(0, numBytes);
+    // Append to the specified pool
+    this.pools[poolId] = Buffer.concat([this.pools[poolId], encodedEvent]);
   }
 
   /**
-   * Generate a random 32-bit integer within the range [min, max).
-   * @param {number} [min=0]
-   * @param {number} [max=0xFFFFFFFF]
-   * @returns {number}
+   * Generates n bytes of random data. Handles reseeding automatically if needed.
+   * Corresponds to RANDOMDATA in the text.
+   * @param n Number of bytes to generate.
+   * @returns A Buffer containing n bytes of pseudorandom data.
    */
-  generateInt32(min: number = 0, max: number = 0xffffffff) {
-    const randBytes = this.generate(4);
-    const randInt = randBytes.readUInt32BE(0);
-    const range = max - min;
-    return min + (randInt % range);
-  }
+  public randomData(n: number): Buffer {
+    const now = Date.now();
 
-  /**
-   * Generate an array of random 32-bit integers within the range [min, max).
-   * @param {number} count
-   * @param {number} min
-   * @param {number} max
-   * @returns {number[]}
-   */
-  generateInt32Batch(count: number, min: number = 0, max: number = 0xffffffff) {
-    const buf = this.generate(count * 4);
-    const result: number[] = [];
-    for (let i = 0; i < count; i++) {
-      const randInt = buf.readUInt32BE(i * 4);
-      const range = max - min;
-      result.push(min + (randInt % range));
+    // Check if reseeding is necessary
+    if (this.pools[0].length >= this.minPoolSize && now - this.lastReseedTime >= RESEED_INTERVAL_MS) {
+      this.reseedCount++;
+      let seedMaterial = Buffer.alloc(0);
+
+      // Collect hashes from relevant pools
+      for (let i = 0; i < NUM_POOLS; i++) {
+        // Check if 2^i divides reseedCount
+        if (this.reseedCount % (1 << i) === 0) {
+          seedMaterial = Buffer.concat([seedMaterial, this.hash(this.pools[i])]);
+          // Reset the pool after using it
+          this.pools[i] = Buffer.alloc(0);
+        } else {
+          // Optimization: if pool 'i' isn't used, no higher pools will be either for this reseed count.
+          // break; // This optimization is suggested in the text's description of the divisor test.
+        }
+      }
+
+      // Perform the reseed operation
+      this.reseed(seedMaterial);
+      this.lastReseedTime = now;
     }
-    return result;
+
+    // Check if generator is ready (must have been seeded at least once)
+    if (!this.seeded) {
+      throw new Error("Fortuna PRNG has not been seeded yet. Add entropy or load seed file.");
+    }
+
+    // Generate and return the random data
+    return this.pseudoRandomData(n);
+  }
+
+  /**
+   * Provides seed data to be written to persistent storage.
+   * Generates 64 bytes of random data suitable for a seed file.
+   * Corresponds to the output part of WRITESEEDFILE/UPDATESEEDFILE.
+   * @returns 64 bytes of data to be used as a seed.
+   */
+  public writeSeedData(): Buffer {
+    // Generate 64 bytes using the current state
+    return this.randomData(64);
+  }
+
+  /**
+   * Reseeds the generator from provided seed data (e.g., read from a file).
+   * Corresponds to the input/reseed part of UPDATESEEDFILE.
+   * The caller MUST ensure this seed data is used only once per boot sequence
+   * and should call writeSeedData() soon after to generate a *new* seed file.
+   * @param seedData The 64 bytes of seed data.
+   */
+  public seedFromData(seedData: Buffer): void {
+    if (!seedData || seedData.length !== 64) {
+      throw new Error("Seed data must be a Buffer of exactly 64 bytes.");
+    }
+    this.reseed(seedData);
+    // Note: We don't increment reseedCount here, as this is typically done
+    // at startup before the normal reseeding cycle begins. The first
+    // call to randomData that triggers a pool-based reseed will increment it to 1.
+    // We *do* mark it as seeded.
+    this.seeded = true;
+    this.lastReseedTime = Date.now(); // Update time to prevent immediate pool reseed
+  }
+
+  /**
+   * Generates a cryptographically secure random 32-bit integer uniformly
+   * distributed in the range [min, max] (inclusive).
+   * Uses rejection sampling to avoid modulo bias.
+   *
+   * @param min The minimum inclusive value.
+   * @param max The maximum inclusive value.
+   * @returns A random integer within the specified range.
+   */
+  public generateInt32(min: number, max: number): number {
+    if (!Number.isInteger(min) || !Number.isInteger(max)) {
+      throw new Error("min and max must be integers.");
+    }
+    if (min > max) {
+      throw new Error("min cannot be greater than max.");
+    }
+    // Check if min/max are within standard 32-bit signed integer range if necessary,
+    // but the logic works for any integer range where max-min+1 fits.
+    // We assume the range fits within reasonable limits for JS numbers here.
+
+    if (min === max) {
+      return min; // Only one possible value
+    }
+
+    // Calculate the range size (number of possible values)
+    const range = max - min + 1;
+
+    // Calculate the limit to avoid modulo bias.
+    // limit is the largest multiple of 'range' that is <= 2^32.
+    // We want to reject raw values >= limit.
+    const limit = UINT32_MAX_COUNT - (UINT32_MAX_COUNT % range);
+
+    let rnd: number;
+    do {
+      // Get a raw unsigned 32-bit random number
+      rnd = this.getRaw32();
+    } while (rnd >= limit); // Reject values that would cause bias
+
+    // Now rnd is uniformly distributed in [0, limit - 1].
+    // Taking modulo range gives a uniform value in [0, range - 1].
+    // Add min to shift it to the desired range [min, max].
+    return (rnd % range) + min;
+  }
+
+  /**
+   * Generates n bytes of "raw" pseudorandom data directly from the generator,
+   * handling requests of any size by potentially making multiple internal calls.
+   * This method assumes the generator has already been seeded appropriately
+   * (either via entropy accumulation in `randomData` or via `seedFromData`).
+   * It handles the internal key update after each chunk generation as described
+   * in the PSEUDORANDOMDATA function.
+   *
+   * This method bypasses the regular accumulator reseeding checks. Use with caution,
+   * as it doesn't benefit from entropy updates between large generation requests.
+   *
+   * @param n The total number of bytes to generate. Can be larger than MAX_GENERATE_BYTES.
+   * @returns A Buffer containing n bytes of pseudorandom data.
+   */
+  public generate(n: number): Buffer {
+    if (!Number.isInteger(n) || n < 0) {
+      throw new Error("Number of bytes 'n' must be a non-negative integer.");
+    }
+
+    // Check if the generator has been seeded at least once
+    if (!this.seeded) {
+      throw new Error("Generator must be seeded before generating data. Call randomData or seedFromData first.");
+    }
+
+    if (n === 0) {
+      return Buffer.alloc(0);
+    }
+
+    // If the request is within the single-call limit, handle it directly
+    if (n <= MAX_GENERATE_BYTES) {
+      return this.pseudoRandomData(n);
+    }
+
+    // --- Handle large requests by breaking them into chunks ---
+    const chunks: Buffer[] = [];
+    let bytesRemaining = n;
+
+    while (bytesRemaining > 0) {
+      // Determine the size of the next chunk to generate
+      // It will always be MAX_GENERATE_BYTES until the last chunk
+      const chunkSize = Math.min(bytesRemaining, MAX_GENERATE_BYTES);
+
+      // Generate the chunk using the internal pseudoRandomData function
+      // This function handles the 1MiB limit and updates the key internally
+      const chunk = this.pseudoRandomData(chunkSize);
+      chunks.push(chunk);
+
+      // Decrease the remaining byte count
+      bytesRemaining -= chunkSize;
+    }
+
+    // Concatenate all generated chunks into a single buffer
+    return Buffer.concat(chunks);
+  }
+
+  /**
+ * Generates an array of cryptographically secure random 32-bit integers,
+ * each uniformly distributed in the range [min, max] (inclusive).
+ * Optimized to generate random bytes in larger batches.
+ *
+ * @param count The number of integers to generate.
+ * @param min The minimum inclusive value for each integer.
+ * @param max The maximum inclusive value for each integer.
+ * @returns An array of random integers within the specified range.
+ */
+  public generateInt32Batch(count: number, min: number, max: number): number[] {
+    if (!Number.isInteger(count) || count < 0) {
+      throw new Error("count must be a non-negative integer.");
+    }
+    if (count === 0) {
+      return [];
+    }
+
+    // Validate min/max once
+    if (!Number.isInteger(min) || !Number.isInteger(max)) {
+      throw new Error("min and max must be integers.");
+    }
+    if (min > max) {
+      throw new Error("min cannot be greater than max.");
+    }
+    if (min === max) {
+      // Only one possible value, fill the array directly
+      return new Array(count).fill(min);
+    }
+
+    // Calculate range and limit for rejection sampling (same as in generateInt32)
+    const range = max - min + 1;
+    const limit = UINT32_MAX_COUNT - (UINT32_MAX_COUNT % range);
+
+    const results: number[] = new Array(count);
+    let resultsGenerated = 0;
+    let randomBuffer: Buffer = Buffer.alloc(0); // Start with an empty buffer
+    let bufferOffset = 0;
+
+    // Determine a reasonable batch size for generating raw bytes
+    // Let's aim for at least 1KB or enough bytes for the remaining needed integers
+    const BATCH_SIZE_BYTES = 1024;
+
+    while (resultsGenerated < count) {
+      // Generate random in32 to make reseed available
+      this.generateInt32(min, max);
+
+      // Check if we need more random bytes from the buffer
+      if (bufferOffset + 4 > randomBuffer.length) {
+        // Need more data. Generate a new batch.
+        // Estimate how many more integers we *might* need raw values for.
+        // Since rejection rate is at most ~50%, needing *up to* 2x raw values is a safe upper bound.
+        // Generate at least BATCH_SIZE_BYTES or enough for remaining count * 2 raw values.
+        const bytesNeededEstimate = Math.max(BATCH_SIZE_BYTES, (count - resultsGenerated) * 4 * 2);
+        // Ensure we don't request more than the generator's single call limit if generate wasn't modified
+        // (Assuming generate handles large requests now)
+        randomBuffer = this.generate(bytesNeededEstimate);
+        bufferOffset = 0; // Reset offset for the new buffer
+
+        if (randomBuffer.length < 4) {
+          // Should not happen with a working generator, but safety check
+          throw new Error("Failed to generate sufficient random data.");
+        }
+      }
+
+      // Read the next 32-bit unsigned integer from the buffer
+      const rnd = randomBuffer.readUInt32BE(bufferOffset);
+      bufferOffset += 4;
+
+      // Apply rejection sampling
+      if (rnd < limit) {
+        // Value accepted, calculate final result and store it
+        results[resultsGenerated] = (rnd % range) + min;
+        resultsGenerated++;
+      }
+      // If rnd >= limit, it's rejected, and we simply loop to get the next value
+    }
+    return results;
   }
 }
 

@@ -2,12 +2,30 @@ import fs from 'fs/promises';
 import path from 'path';
 import cliProgress from 'cli-progress';
 import colors from 'ansi-colors';
-
-import FortunaRNG from './../src';
+import crypto from 'crypto';
+import FortunaRNG from '../src';
 
 (async () => {
     // Создаем экземпляр FortunaRNG
-    const rng = new FortunaRNG();
+    const rng = new FortunaRNG(crypto.randomBytes(64));
+
+    // Добавляем случайные события в RNG
+    setTimeout(addRandomEvent, 100);
+    let seqCounter = 0;
+
+    function addRandomEvent() {
+        rng.addRandomEvent(
+            0,
+            crypto.randomInt(32),
+            crypto.randomBytes(32));
+        rng.addRandomEvent(
+            1,
+            crypto.randomInt(32),
+            Buffer.from(seqCounter.toString()));
+        seqCounter++;
+        rng.randomData(32);
+        setTimeout(addRandomEvent, 100);
+    }
 
     // Создаем прогресс-бар
     const progressBar = new cliProgress.SingleBar({
@@ -59,50 +77,6 @@ import FortunaRNG from './../src';
         updateProgressBar(`Файл ${filePath} успешно создан.`);
     }
 
-    // function shufleArr(range, startCount = 1) {
-    //     // Создаем массив из range (номера от 1 до range)
-    //     const deck = Array.from({ length: range }, (_, index) => index + 1);
-
-    //     // Возвращаем функцию, которая "вытягивает" случайное значение из массива (уникальное)
-
-    //     return function shufle() {
-    //         if (deck.length === 0) {
-    //             return null;
-    //         }
-
-    //         // Генерируем случайный индекс
-    //         const randomIndex = rng.generateInt32(startCount, deck.length - 1)
-    //         // Удаляем индекс из массива и возвращаем его
-    //         return deck.splice(randomIndex, 1)[0];
-    //     };
-
-    // }
-
-    // Функция для генерации случайного числа в заданном диапазоне range shufle
-
-    // async function generateNumbersToFileWithShufle(filename, count, range, startCount = 1) {
-    //     const globalList = []
-    //     let shufle = shufleArr(range, startCount);
-    //     while (globalList.length < count) {
-    //         let cardNumber = shufle();
-    //         if (cardNumber !== null) {
-    //             globalList.push(cardNumber);
-    //         } else {
-    //             // Если карты закончились, создаем новую колоду
-    //             shufle = shufleArr(range);
-    //         }
-    //     }
-    //     // Удаляем избыток, если есть
-    //     if (globalList.length > count) {
-    //         globalList.length = count;
-    //     }
-    //     const filePath = path.join('result', filename);
-    //     await fs.writeFile(filePath, globalList.join('\n'), 'utf8');
-    //     completedTasks++;
-    //     updateProgressBar(`Файл ${filePath} успешно создан.`);
-    // }
-
-    // Создаем директорию result, если она не существует
     try {
         await fs.access('result');
     } catch (error) {
