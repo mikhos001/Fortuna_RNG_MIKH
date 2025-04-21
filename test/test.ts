@@ -10,11 +10,10 @@ import FortunaRNG from '../src';
     const rng = new FortunaRNG(crypto.randomBytes(64));
 
     // Добавляем случайные события в RNG
-    setTimeout(addRandomEvent, 100);
+    setTimeout(addRandomEvent, 500);
     let seqCounter = 0;
 
     function addRandomEvent() {
-        console.log('addRandomEvent');
         rng.addRandomEvent(
             0,
             crypto.randomInt(32),
@@ -25,7 +24,7 @@ import FortunaRNG from '../src';
             Buffer.from(seqCounter.toString()));
         seqCounter++;
         rng.randomData(32);
-        setTimeout(addRandomEvent, 100);
+        setTimeout(addRandomEvent, 500);
     }
 
     // Создаем прогресс-бар
@@ -39,6 +38,7 @@ import FortunaRNG from '../src';
     let totalTasks = 0;
     let completedTasks = 0;
     let currentTask = '';
+    let totalRngCalls = 0;
 
     // Функция для обновления прогресс-бара
     function updateProgressBar(task: string) {
@@ -56,13 +56,14 @@ import FortunaRNG from '../src';
 
     // Функция для генерации случайных чисел и сохранения их в файл
     async function generateNumbersToFile(filename: string, count: number, range: number, startCount: number = 1) {
-        const task = `Генерация файла ${filename}`;
+        const task = `Creating ${filename}`;
         updateProgressBar(task);
-        const numbers = await rng.generateInt32Batch(count, startCount, range + 1);
+        const numbers = await rng.generateInt32Batch(count, startCount, range);
         const filePath = path.join('result', filename);
         await fs.writeFile(filePath, numbers.join('\n'), 'utf8');
         completedTasks++;
-        updateProgressBar(`Файл ${filePath} успешно создан.`);
+        updateProgressBar(`File ${filePath} created.`);
+        totalRngCalls += count;
     }
 
     try {
@@ -72,14 +73,15 @@ import FortunaRNG from '../src';
     }
 
     // Устанавливаем общее количество задач
-    totalTasks = 15; // 4 бинарных файла + 11 текстовых файлов
-    progressBar.start(totalTasks, 0, { task: 'Начало генерации файлов' });
+    totalTasks = 11; // 11 текстовых файлов
+    progressBar.start(totalTasks, 0, { task: 'Starting...' });
 
     // Обновляем прогресс-бар с анимацией спиннера
     const spinnerInterval = setInterval(() => {
         progressBar.update(completedTasks, { task: `${currentTask} ${getSpinner()}` });
     }, 100);
 
+    let startTime = Date.now();
 
     // Тест 1 (Dice): Создание файла с 1 млн строк (число на строку) в диапазоне 1-6
     await generateNumbersToFile('dice.txt', 1000000, 6);
@@ -88,10 +90,10 @@ import FortunaRNG from '../src';
     await generateNumbersToFile('slot.txt', 1000000, 499, 0);
 
     // Тест 3 (Card shuffle deck 1): Создание файла с 1 млн строк (число на строку) в диапазоне 0-51
-    await generateNumbersToFile('cardShafl1deks.txt', 1000000, 51, 0)
+    await generateNumbersToFile('card_shuffle_1_decks.txt', 1000000, 51, 0)
 
     // Тест 4 (Card shuffle deck 8): Создание файла с 1 млн строк (число на строку) в диапазоне 0-415
-    await generateNumbersToFile('cardShafl8deks.txt', 1000000, 415, 0)
+    await generateNumbersToFile('card_shuffle_8_decks.txt', 1000000, 415, 0)
 
     // Тест 5 (Crash): Создание файла с 1 млн строк (число на строку) в диапазоне 0-9900
     await generateNumbersToFile('crash.txt', 1000000, 9900, 0);
@@ -112,11 +114,15 @@ import FortunaRNG from '../src';
     await generateNumbersToFile('keno.txt', 1000000, 40, 1);
 
     // Тест 11 (Roulette): Создание файла с 1 млн строк (число на строку) в диапазоне 0-37
-    await generateNumbersToFile('Roulette.txt', 1000000, 37, 0);
+    await generateNumbersToFile('roulette.txt', 1000000, 37, 0);
 
+    let endTime = Date.now();
+    let callsPerSecond = Math.floor(totalRngCalls / ((endTime - startTime) / 1000));
 
     progressBar.stop();
     clearInterval(spinnerInterval);
-    console.log(colors.green('Generate file done!'));
+    console.log(colors.green('Generate file done, total RNG calls: ' + totalRngCalls));
+    console.log(colors.green('Total time: ' + ((endTime - startTime) / 1000) + ' seconds'));
+    console.log(colors.green('Total RNG calls per second: ' + callsPerSecond));
     process.exit(0);
 })();

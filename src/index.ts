@@ -65,6 +65,19 @@ class FortunaRNG {
   }
 
   /**
+   * Sleep for a short duration to avoid blocking the event loop.
+   * This is used to prevent the generator from hogging CPU time
+   * during large generation requests or when adding random events.
+   */
+  private async sleep() {
+    await new Promise<void>(resolve => {
+      setTimeout(() => {
+        resolve();
+      }, 1);
+    })
+  }
+
+  /**
    * Increments the 128-bit counter (treating it as big-endian).
    */
   private incrementCounter(): void {
@@ -126,6 +139,7 @@ class FortunaRNG {
       encryptedBlock.copy(output, i * BLOCK_SIZE_BYTES);
       this.incrementCounter();
     }
+
     return output;
   }
 
@@ -157,7 +171,7 @@ class FortunaRNG {
     this.generatorKey = newKeyData; // Update the key
 
     // Return only the requested number of bytes
-    return generatedData.slice(0, n);
+    return generatedData.subarray(0, n);
   }
 
   /**
@@ -176,6 +190,9 @@ class FortunaRNG {
     if (!this.seeded) {
       this.seeded = true;
     }
+
+    // Increment reseed count
+    this.reseedCount++;
   }
 
   /**
@@ -187,7 +204,6 @@ class FortunaRNG {
     // Use Big Endian for consistency, though either works if used consistently
     return buffer.readUInt32BE(0);
   }
-
 
   // --- Public Methods ---
 
@@ -234,9 +250,7 @@ class FortunaRNG {
 
     // Check if reseeding is necessary
     if (this.pools[0].length >= this.minPoolSize && now - this.lastReseedTime >= RESEED_INTERVAL_MS) {
-      this.reseedCount++;
       let seedMaterial = Buffer.alloc(0);
-
       // Collect hashes from relevant pools
       for (let i = 0; i < NUM_POOLS; i++) {
         // Check if 2^i divides reseedCount
@@ -244,9 +258,6 @@ class FortunaRNG {
           seedMaterial = Buffer.concat([seedMaterial, this.hash(this.pools[i])]);
           // Reset the pool after using it
           this.pools[i] = Buffer.alloc(0);
-        } else {
-          // Optimization: if pool 'i' isn't used, no higher pools will be either for this reseed count.
-          // break; // This optimization is suggested in the text's description of the divisor test.
         }
       }
 
@@ -261,18 +272,25 @@ class FortunaRNG {
     }
 
     // Generate and return the random data
-    return this.pseudoRandomData(n);
-  }
+    if (n <= MAX_GENERATE_BYTES) {
+      return this.pseudoRandomData(n);
+    }
 
-  /**
-   * Provides seed data to be written to persistent storage.
-   * Generates 64 bytes of random data suitable for a seed file.
-   * Corresponds to the output part of WRITESEEDFILE/UPDATESEEDFILE.
-   * @returns 64 bytes of data to be used as a seed.
-   */
-  public writeSeedData(): Buffer {
-    // Generate 64 bytes using the current state
-    return this.randomData(64);
+    // break into chunks and reseed for each chunk
+    const chunks: Buffer[] = [];
+    let remaining = n;
+    let offset = 0;
+    while (remaining > 0) {
+      const chunkSize = Math.min(remaining, MAX_GENERATE_BYTES);
+      // This will update the generator key and counter
+      const chunk = this.pseudoRandomData(chunkSize);
+      chunks.push(chunk);
+      remaining -= chunkSize;
+      offset += chunkSize;
+      // Add random event to the pool
+      this.addRandomEvent(255, 0, this.pseudoRandomData(POOL_SIZE));
+    }
+    return Buffer.concat(chunks);
   }
 
   /**
@@ -287,10 +305,6 @@ class FortunaRNG {
       throw new Error("Seed data must be a Buffer of exactly 64 bytes.");
     }
     this.reseed(seedData);
-    // Note: We don't increment reseedCount here, as this is typically done
-    // at startup before the normal reseeding cycle begins. The first
-    // call to randomData that triggers a pool-based reseed will increment it to 1.
-    // We *do* mark it as seeded.
     this.seeded = true;
     this.lastReseedTime = Date.now(); // Update time to prevent immediate pool reseed
   }
@@ -340,67 +354,8 @@ class FortunaRNG {
   }
 
   /**
-   * Generates n bytes of "raw" pseudorandom data directly from the generator,
-   * handling requests of any size by potentially making multiple internal calls.
-   * This method assumes the generator has already been seeded appropriately
-   * (either via entropy accumulation in `randomData` or via `seedFromData`).
-   * It handles the internal key update after each chunk generation as described
-   * in the PSEUDORANDOMDATA function.
-   *
-   * This method bypasses the regular accumulator reseeding checks. Use with caution,
-   * as it doesn't benefit from entropy updates between large generation requests.
-   *
-   * @param n The total number of bytes to generate. Can be larger than MAX_GENERATE_BYTES.
-   * @returns A Buffer containing n bytes of pseudorandom data.
-   */
-  public async generate(n: number): Promise<Buffer> {
-    if (!Number.isInteger(n) || n < 0) {
-      throw new Error("Number of bytes 'n' must be a non-negative integer.");
-    }
-
-    // Check if the generator has been seeded at least once
-    if (!this.seeded) {
-      throw new Error("Generator must be seeded before generating data. Call randomData or seedFromData first.");
-    }
-
-    if (n === 0) {
-      return Buffer.alloc(0);
-    }
-
-    // If the request is within the single-call limit, handle it directly
-    if (n <= MAX_GENERATE_BYTES) {
-      return this.pseudoRandomData(n);
-    }
-
-    // --- Handle large requests by breaking them into chunks ---
-    const chunks: Buffer[] = [];
-    let bytesRemaining = n;
-
-    while (bytesRemaining > 0) {
-      // Determine the size of the next chunk to generate
-      // It will always be MAX_GENERATE_BYTES until the last chunk
-      const chunkSize = Math.min(bytesRemaining, MAX_GENERATE_BYTES);
-
-      // Generate the chunk using the internal pseudoRandomData function
-      // This function handles the 1MiB limit and updates the key internally
-      const chunk = this.pseudoRandomData(chunkSize);
-      chunks.push(chunk);
-
-      // Decrease the remaining byte count
-      bytesRemaining -= chunkSize;
-
-      // Sleep to avoid blocking the event loop for too long
-      await this.sleep();
-    }
-
-    // Concatenate all generated chunks into a single buffer
-    return Buffer.concat(chunks);
-  }
-
-  /**
  * Generates an array of cryptographically secure random 32-bit integers,
  * each uniformly distributed in the range [min, max] (inclusive).
- * Optimized to generate random bytes in larger batches.
  *
  * @param count The number of integers to generate.
  * @param min The minimum inclusive value for each integer.
@@ -427,70 +382,17 @@ class FortunaRNG {
       return new Array(count).fill(min);
     }
 
-    // Calculate range and limit for rejection sampling (same as in generateInt32)
-    const range = max - min + 1;
-    const limit = UINT32_MAX_COUNT - (UINT32_MAX_COUNT % range);
-
+    // create batch using generateInt32 call
     const results: number[] = new Array(count);
-    let resultsGenerated = 0;
-    let randomBuffer: Buffer = Buffer.alloc(0); // Start with an empty buffer
-    let bufferOffset = 0;
-
-    // Determine a reasonable batch size for generating raw bytes
-    // Let's aim for at least 1KB or enough bytes for the remaining needed integers
-    const BATCH_SIZE_BYTES = 1024;
-
-    while (resultsGenerated < count) {
-      // Generate random in32 to make reseed available
-      this.generateInt32(min, max);
-
-      // Check if we need more random bytes from the buffer
-      if (bufferOffset + 4 > randomBuffer.length) {
-        // Need more data. Generate a new batch.
-        // Estimate how many more integers we *might* need raw values for.
-        // Since rejection rate is at most ~50%, needing *up to* 2x raw values is a safe upper bound.
-        // Generate at least BATCH_SIZE_BYTES or enough for remaining count * 2 raw values.
-        const bytesNeededEstimate = Math.max(BATCH_SIZE_BYTES, (count - resultsGenerated) * 4 * 2);
-        // Ensure we don't request more than the generator's single call limit if generate wasn't modified
-        // (Assuming generate handles large requests now)
-        randomBuffer = await this.generate(bytesNeededEstimate);
-        bufferOffset = 0; // Reset offset for the new buffer
-
-        if (randomBuffer.length < 4) {
-          // Should not happen with a working generator, but safety check
-          throw new Error("Failed to generate sufficient random data.");
-        }
+    for (let i = 0; i < count; i++) {
+      results[i] = this.generateInt32(min, max);
+      // Sleep to avoid blocking the event loop
+      if (i % 10000 === 0) {
+        // Sleep every 1000 iterations to yield control
+        await this.sleep();
       }
-
-      // Read the next 32-bit unsigned integer from the buffer
-      const rnd = randomBuffer.readUInt32BE(bufferOffset);
-      bufferOffset += 4;
-
-      // Apply rejection sampling
-      if (rnd < limit) {
-        // Value accepted, calculate final result and store it
-        results[resultsGenerated] = (rnd % range) + min;
-        resultsGenerated++;
-      }
-      // If rnd >= limit, it's rejected, and we simply loop to get the next value
-
-      // Sleep to avoid blocking the event loop for too long
-      await this.sleep();
     }
     return results;
-  }
-
-  /**
-   * Sleep for a short duration to avoid blocking the event loop.
-   * This is used to prevent the generator from hogging CPU time
-   * during large generation requests or when adding random events.
-   */
-  private async sleep() {
-    await new Promise<void>(resolve => {
-      setTimeout(() => {
-        resolve();
-      }, 1);
-    })
   }
 }
 
