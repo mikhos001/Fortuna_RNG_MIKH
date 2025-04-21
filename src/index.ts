@@ -202,69 +202,6 @@ class FortunaRNG {
   }
 
   /**
-   * Generate a random 8-bit integer within the range [min, max).
-   * @param {number} [min=0]
-   * @param {number} [max=0xFF]
-   * @returns {number}
-   */
-  generateInt8(min: number = 0, max: number = 0xff) {
-    const randBytes = this.generate(1);
-    const randInt = randBytes.readUInt8(0);
-    const range = max - min;
-    return min + (randInt % range);
-  }
-
-  /**
-   * Generate an array of random 8-bit integers within the range [min, max).
-   * @param {number} count - Number of random integers to generate.
-   * @param {number} [min=0]
-   * @param {number} [max=0xFF]
-   * @returns {number[]}
-   */
-  generateInt8Batch(count: number, min: number = 0, max: number = 0xff) {
-    const buf = this.generate(count);
-    const result: number[] = [];
-    for (let i = 0; i < count; i++) {
-      const randInt = buf.readUInt8(i);
-      const range = max - min;
-      result.push(min + (randInt % range));
-    }
-    return result;
-  }
-
-  /**
-   * Generate a random 16-bit integer within the range [min, max).
-   * Note: Uses modulo reduction, which may introduce slight bias.
-   * @param {number} [min=0]
-   * @param {number} [max=0xFFFF]
-   * @returns {number}
-   */
-  generateInt16(min: number = 0, max: number = 0xffff) {
-    const randBytes = this.generate(2);
-    const randInt = randBytes.readUInt16BE(0);
-    const range = max - min;
-    return min + (randInt % range);
-  }
-
-  /**
-   * Generate an array of random 16-bit integers within the range [min, max).
-   * @param {number} count - Number of random integers to generate.
-   * @param {number} [min=0]
-   * @param {number} [max=0xFFFF]
-   * @returns {number[]}
-   */
-  generateInt16Batch(count: number, min: number = 0, max: number = 0xffff) {
-    const buf = this.generate(count * 2);
-    const result: number[] = [];
-    for (let i = 0; i < count; i++) {
-      const randInt = buf.readUInt16BE(i * 2);
-      const range = max - min;
-      result.push(min + (randInt % range));
-    }
-    return result;
-  }
-
-  /**
    * Generate a random 32-bit integer within the range [min, max).
    * @param {number} [min=0]
    * @param {number} [max=0xFFFFFFFF]
@@ -289,45 +226,6 @@ class FortunaRNG {
     const result: number[] = [];
     for (let i = 0; i < count; i++) {
       const randInt = buf.readUInt32BE(i * 4);
-      const range = max - min;
-      result.push(min + (randInt % range));
-    }
-    return result;
-  }
-
-  /**
-   * Generate a random 64-bit integer within the range [min, max).
-   * Note: Converts the result to a JavaScript Number (IEEE-754 double),
-   * which is safe up to 2^53-1; consider returning a BigInt for full 64-bit range.
-   * @param {number|bigint} [min=0]
-   * @param {number|bigint} [max=0xFFFFFFFFFFFFFFFF]
-   * @returns {number}
-   */
-  generateInt64(min: number = 0, max: number = 0xffffffffffffffff) {
-    const randBytes = this.generate(8);
-    // Use BigInt for 64-bit operations
-    const randInt = randBytes.readBigUInt64BE(0);
-    const range = BigInt(max) - BigInt(min);
-    return Number(BigInt(min) + (randInt % range));
-  }
-
-  /**
-   * Generate an array of random 64-bit integers within the range [min, max).
-   * Note: Uses BigInt to represent 64-bit integers.
-   * @param {number} count - Number of random integers to generate.
-   * @param {bigint} [min=0n]
-   * @param {bigint} [max=0xFFFFFFFFFFFFFFFFn]
-   * @returns {bigint[]}
-   */
-  generateInt64Batch(
-    count: number,
-    min: bigint = 0n,
-    max: bigint = 0xffffffffffffffffn
-  ) {
-    const buf = this.generate(count * 8);
-    const result: bigint[] = [];
-    for (let i = 0; i < count; i++) {
-      const randInt = buf.readBigUInt64BE(i * 8);
       const range = max - min;
       result.push(min + (randInt % range));
     }
