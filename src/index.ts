@@ -31,7 +31,7 @@ class FortunaRNG {
 
   /**
    * Initializes the Fortuna PRNG state.
-   * @param seed Initial seed data (optional).
+   * @param seed Initial seed data may be saved to a file using data from randomData(64) call.
    */
   constructor(seed?: Buffer) {
     if (!seed) {
@@ -125,8 +125,6 @@ class FortunaRNG {
   private generateBlocks(k: number): Buffer {
     if (!this.seeded) {
       // Check if the generator has been seeded at least once
-      // The text uses C != 0 as the check, which means counter > 0
-      // We use a separate 'seeded' flag set during the first reseed.
       throw new Error("Generator must be seeded before generating data.");
     }
     if (k <= 0) {
@@ -288,7 +286,7 @@ class FortunaRNG {
       remaining -= chunkSize;
       offset += chunkSize;
       // Add random event to the pool
-      this.addRandomEvent(255, 0, this.pseudoRandomData(POOL_SIZE));
+      this.addRandomEvent(255, this.generateInt32(0, 31), this.pseudoRandomData(POOL_SIZE));
     }
     return Buffer.concat(chunks);
   }
@@ -297,7 +295,6 @@ class FortunaRNG {
    * Reseeds the generator from provided seed data (e.g., read from a file).
    * Corresponds to the input/reseed part of UPDATESEEDFILE.
    * The caller MUST ensure this seed data is used only once per boot sequence
-   * and should call writeSeedData() soon after to generate a *new* seed file.
    * @param seedData The 64 bytes of seed data.
    */
   public seedFromData(seedData: Buffer): void {
@@ -322,12 +319,10 @@ class FortunaRNG {
     if (!Number.isInteger(min) || !Number.isInteger(max)) {
       throw new Error("min and max must be integers.");
     }
+
     if (min > max) {
       throw new Error("min cannot be greater than max.");
     }
-    // Check if min/max are within standard 32-bit signed integer range if necessary,
-    // but the logic works for any integer range where max-min+1 fits.
-    // We assume the range fits within reasonable limits for JS numbers here.
 
     if (min === max) {
       return min; // Only one possible value
