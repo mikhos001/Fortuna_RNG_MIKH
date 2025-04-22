@@ -35,22 +35,18 @@ class FortunaRNG {
    */
   constructor(seed?: Buffer) {
     if (!seed) {
-      throw new Error("Seed data is required to initialize the generator.");
+      throw new Error(`Seed data is required to initialize the generator.`);
     }
-
     this.minPoolSize = POOL_SIZE;
     // Initialize Generator (key and counter to zero)
     this.generatorKey = Buffer.alloc(KEY_SIZE_BYTES, 0);
     this.generatorCounter = Buffer.alloc(BLOCK_SIZE_BYTES, 0);
-
     // Initialize Pools (32 empty pools)
     this.pools = Array(NUM_POOLS).fill(null).map(() => Buffer.alloc(0));
-
     // Initialize Reseed tracking
     this.reseedCount = 0;
     this.lastReseedTime = 0;
     this.seeded = false; // Mark as not seeded initially
-
     // Set the initial seed
     this.seedFromData(seed);
   }
@@ -100,7 +96,7 @@ class FortunaRNG {
   private blockEncrypt(block: Buffer): Buffer {
     if (!this.seeded && this.reseedCount === 0) {
       // This check might be redundant if generateBlocks already checks seeded status
-      throw new Error("Generator not seeded yet.");
+      throw new Error(`Generator not seeded yet.`);
     }
     if (this.generatorKey.length !== KEY_SIZE_BYTES) {
       throw new Error(`Internal error: Invalid key size ${this.generatorKey.length}`);
@@ -125,19 +121,19 @@ class FortunaRNG {
   private generateBlocks(k: number): Buffer {
     if (!this.seeded) {
       // Check if the generator has been seeded at least once
-      throw new Error("Generator must be seeded before generating data.");
+      throw new Error(`Generator must be seeded before generating data.`);
     }
     if (k <= 0) {
       return Buffer.alloc(0);
     }
-
+    // Generate k blocks of data
     const output = Buffer.alloc(k * BLOCK_SIZE_BYTES);
     for (let i = 0; i < k; i++) {
       const encryptedBlock = this.blockEncrypt(this.generatorCounter);
       encryptedBlock.copy(output, i * BLOCK_SIZE_BYTES);
+      // Increment the counter for the next block
       this.incrementCounter();
     }
-
     return output;
   }
 
@@ -154,20 +150,16 @@ class FortunaRNG {
     if (n === 0) {
       return Buffer.alloc(0);
     }
-
     // Calculate number of blocks needed (ceiling division)
     const blocksNeeded = Math.ceil(n / BLOCK_SIZE_BYTES);
-
     // Generate the required random data
     const generatedData = this.generateBlocks(blocksNeeded);
-
     // Generate 2 more blocks for the new key (2 * 16 = 32 bytes = 256 bits)
     const newKeyData = this.generateBlocks(2);
     if (newKeyData.length !== KEY_SIZE_BYTES) {
       throw new Error(`Internal error: Failed to generate correct size for new key (${newKeyData.length})`);
     }
     this.generatorKey = newKeyData; // Update the key
-
     // Return only the requested number of bytes
     return generatedData.subarray(0, n);
   }
@@ -180,15 +172,12 @@ class FortunaRNG {
   private reseed(seedData: Buffer): void {
     // K <- SHA-256(K || s)
     this.generatorKey = this.hash(Buffer.concat([this.generatorKey, seedData]));
-
     // Increment counter C <- C + 1
     this.incrementCounter();
-
     // Mark as seeded after the first reseed operation completes
     if (!this.seeded) {
       this.seeded = true;
     }
-
     // Increment reseed count
     this.reseedCount++;
   }
@@ -226,13 +215,11 @@ class FortunaRNG {
       // Text implies length 1..32 for event data 'e'
       throw new Error(`Invalid eventData length: ${eventLen}. Must be between 1 and 32.`);
     }
-
     // Encode as: sourceId (1 byte) || length(eventData) (1 byte) || eventData
     const encodedEvent = Buffer.concat([
       Buffer.from([sourceId, eventLen]),
       eventData
     ]);
-
     // Append to the specified pool
     this.pools[poolId] = Buffer.concat([this.pools[poolId], encodedEvent]);
   }
@@ -245,7 +232,6 @@ class FortunaRNG {
    */
   public randomData(n: number): Buffer {
     const now = Date.now();
-
     // Check if reseeding is necessary
     if (this.pools[0].length >= this.minPoolSize && now - this.lastReseedTime >= RESEED_INTERVAL_MS) {
       let seedMaterial = Buffer.alloc(0);
@@ -258,22 +244,18 @@ class FortunaRNG {
           this.pools[i] = Buffer.alloc(0);
         }
       }
-
       // Perform the reseed operation
       this.reseed(seedMaterial);
       this.lastReseedTime = now;
     }
-
     // Check if generator is ready (must have been seeded at least once)
     if (!this.seeded) {
-      throw new Error("Fortuna PRNG has not been seeded yet. Add entropy or load seed file.");
+      throw new Error(`Fortuna PRNG has not been seeded yet. Add entropy or load seed file.`);
     }
-
     // Generate and return the random data
     if (n <= MAX_GENERATE_BYTES) {
       return this.pseudoRandomData(n);
     }
-
     // break into chunks and reseed for each chunk
     const chunks: Buffer[] = [];
     let remaining = n;
@@ -286,7 +268,9 @@ class FortunaRNG {
       remaining -= chunkSize;
       offset += chunkSize;
       // Add random event to the pool
-      this.addRandomEvent(255, this.generateInt32(0, 31), this.pseudoRandomData(POOL_SIZE));
+      this.addRandomEvent(255,
+        this.generateInt32(0, 31),
+        this.pseudoRandomData(POOL_SIZE));
     }
     return Buffer.concat(chunks);
   }
@@ -299,7 +283,7 @@ class FortunaRNG {
    */
   public seedFromData(seedData: Buffer): void {
     if (!seedData || seedData.length !== 64) {
-      throw new Error("Seed data must be a Buffer of exactly 64 bytes.");
+      throw new Error(`Seed data must be a Buffer of exactly 64 bytes.`);
     }
     this.reseed(seedData);
     this.seeded = true;
@@ -316,32 +300,27 @@ class FortunaRNG {
    * @returns A random integer within the specified range.
    */
   public generateInt32(min: number, max: number): number {
+    // validate min/max
     if (!Number.isInteger(min) || !Number.isInteger(max)) {
-      throw new Error("min and max must be integers.");
+      throw new Error(`min and max must be integers.`);
     }
-
     if (min > max) {
-      throw new Error("min cannot be greater than max.");
+      throw new Error(`min cannot be greater than max.`);
     }
-
     if (min === max) {
-      return min; // Only one possible value
+      return min;
     }
-
     // Calculate the range size (number of possible values)
     const range = max - min + 1;
-
     // Calculate the limit to avoid modulo bias.
     // limit is the largest multiple of 'range' that is <= 2^32.
     // We want to reject raw values >= limit.
     const limit = UINT32_MAX_COUNT - (UINT32_MAX_COUNT % range);
-
     let rnd: number;
     do {
       // Get a raw unsigned 32-bit random number
       rnd = this.getRaw32();
     } while (rnd >= limit); // Reject values that would cause bias
-
     // Now rnd is uniformly distributed in [0, limit - 1].
     // Taking modulo range gives a uniform value in [0, range - 1].
     // Add min to shift it to the desired range [min, max].
@@ -358,25 +337,24 @@ class FortunaRNG {
  * @returns An array of random integers within the specified range.
  */
   public async generateInt32Batch(count: number, min: number, max: number): Promise<number[]> {
+    // Validate count
     if (!Number.isInteger(count) || count < 0) {
-      throw new Error("count must be a non-negative integer.");
+      throw new Error(`count must be a non-negative integer.`);
     }
     if (count === 0) {
       return [];
     }
-
     // Validate min/max once
     if (!Number.isInteger(min) || !Number.isInteger(max)) {
-      throw new Error("min and max must be integers.");
+      throw new Error(`min and max must be integers.`);
     }
     if (min > max) {
-      throw new Error("min cannot be greater than max.");
+      throw new Error(`min cannot be greater than max.`);
     }
     if (min === max) {
       // Only one possible value, fill the array directly
       return new Array(count).fill(min);
     }
-
     // create batch using generateInt32 call
     const results: number[] = new Array(count);
     for (let i = 0; i < count; i++) {
@@ -391,4 +369,5 @@ class FortunaRNG {
   }
 }
 
+// Export the FortunaRNG class
 export default FortunaRNG;
