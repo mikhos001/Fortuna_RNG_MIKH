@@ -1,6 +1,6 @@
 {
   "name": "fortuna-rng-by-mikh",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A TypeScript library for cryptographic operations using Fortuna RNG",
   "author": "Mikhail Agafonov",
   "license": "Apache 2.0",
