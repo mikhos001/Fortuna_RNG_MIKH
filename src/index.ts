@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import { Mutex } from 'async-mutex';
 
 // Constants based on the text and AES-256
 const KEY_SIZE_BYTES = 32; // 256 bits
@@ -28,6 +29,7 @@ class FortunaRNG {
   private lastReseedTime: number;
   private minPoolSize: number;
   private seeded: boolean;
+  private readonly mutex: Mutex = new Mutex();
 
   /**
    * Initializes the Fortuna PRNG state.
@@ -355,17 +357,21 @@ class FortunaRNG {
       // Only one possible value, fill the array directly
       return new Array(count).fill(min);
     }
-    // create batch using generateInt32 call
-    const results: number[] = new Array(count);
-    for (let i = 0; i < count; i++) {
-      results[i] = this.generateInt32(min, max);
-      // Sleep to avoid blocking the event loop
-      if (i % 10000 === 0) {
-        // Sleep every 1000 iterations to yield control
-        await this.sleep();
+
+    // exclusive calculate results
+    return await this.mutex.runExclusive(async () => {
+      // create batch using generateInt32 call
+      const results: number[] = new Array(count);
+      for (let i = 0; i < count; i++) {
+        results[i] = this.generateInt32(min, max);
+        // Sleep to avoid blocking the event loop
+        if (i % 10000 === 0) {
+          // Sleep every 1000 iterations to yield control
+          await this.sleep();
+        }
       }
-    }
-    return results;
+      return results;
+    });
   }
 }
 

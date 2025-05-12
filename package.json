@@ -1,6 +1,6 @@
 {
   "name": "fortuna-rng-by-mikh",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A TypeScript library for cryptographic operations using Fortuna RNG",
   "author": "Mikhail Agafonov",
   "license": "Apache 2.0",
@@ -18,6 +18,7 @@
     "@types/cli-progress": "^3.11.6",
     "@types/node": "^16.18.126",
     "ansi-colors": "^4.1.1",
+    "async-mutex": "^0.4.0",
     "cli-progress": "^3.12.0",
     "file-saver": "^2.0.5",
     "prettier": "^2.4.1",
