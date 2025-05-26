@@ -1,16 +1,27 @@
 import * as crypto from 'crypto';
 import { Mutex } from 'async-mutex';
 
-// Constants based on the text and AES-256
-const KEY_SIZE_BYTES = 32; // 256 bits
-const BLOCK_SIZE_BYTES = 16; // 128 bits
-const MAX_GENERATE_BYTES = 1 << 20; // 2^20 bytes (1 MiB) limit per request
+// Constants based on the text and AES-256 - 256 bits
+const KEY_SIZE_BYTES = 32;
+// 128 bits
+const BLOCK_SIZE_BYTES = 16;
+// 2^20 bytes (1 MiB) limit per request
+const MAX_GENERATE_BYTES = 1 << 20;
 const NUM_POOLS = 32;
-const RESEED_INTERVAL_MS = 100; // Minimum time between reseeds
-const POOL_SIZE = 64; // Size of each pool in bytes
+// Minimum time between reseeds
+const RESEED_INTERVAL_MS = 100;
+// Size of each pool in bytes
+const POOL_SIZE = 64;
 
-// Constants for generateInt32
-const UINT32_MAX_COUNT = 0x100000000; // 2^32, the number of possible uint32 values
+// Reserved for internal random events (pseudorandom data)
+const RESERVED_POOL_ID1 = 253;
+// Reserved for internal random events (time in ms)
+const RESERVED_POOL_ID2 = 254;
+// Reserved for internal random events (random data from generator)
+const RESERVED_POOL_ID3 = 255;
+
+// Constants for generateInt32 2^32, the number of possible uint32 values
+const UINT32_MAX_COUNT = 0x100000000;
 
 /**
  * FortunaRNG is a cryptographically secure random number generator
@@ -37,7 +48,8 @@ class FortunaRNG {
    */
   constructor(seed?: Buffer) {
     if (!seed) {
-      throw new Error(`Seed data is required to initialize the generator.`);
+      // Default cryptographically strong seed if none provided
+      seed = crypto.randomBytes(64);
     }
     this.minPoolSize = POOL_SIZE;
     // Initialize Generator (key and counter to zero)
@@ -51,6 +63,36 @@ class FortunaRNG {
     this.seeded = false; // Mark as not seeded initially
     // Set the initial seed
     this.seedFromData(seed);
+    // Initialize random event generation
+    setTimeout(this.addRandomEventID1, 457);
+    setTimeout(this.addRandomEventID2, 503);
+  }
+
+  /**
+   * Adds a random event with source 253 to the generator's state.
+   * This event adds cryptographically strong pseudorandom data.
+   */
+  private addRandomEventID1 = (): void => {
+    // add cryptographically strong data
+    this.addRandomEvent(RESERVED_POOL_ID1,
+      crypto.randomInt(NUM_POOLS),
+      crypto.randomBytes(32));
+    // schedule next random event
+    setTimeout(this.addRandomEventID2, 503);
+  }
+
+  /**
+   * Adds a random event with source 254 to the generator's state.
+   * This event adds the current time in milliseconds.
+   */
+  private addRandomEventID2 = (): void => {
+    // add current time accurate to ms or in clock ticks
+    var now = Date.now();
+    this.addRandomEvent(RESERVED_POOL_ID2,
+      crypto.randomInt(NUM_POOLS),
+      Buffer.from(now.toString()));
+    // schedule next random event
+    setTimeout(this.addRandomEventID1, 457);
   }
 
   /**
@@ -201,7 +243,7 @@ class FortunaRNG {
    * Corresponds to ADDRANDOMEVENT in the text.
    * The caller (entropy source) is responsible for choosing the correct poolId
    * based on round-robin distribution.
-   * @param sourceId Source identifier (0-255).
+   * @param sourceId Source identifier (0-252) 253, 254, 255 are reserved.
    * @param poolId Pool index (0-31).
    * @param eventData The entropy data (1-32 bytes).
    */
@@ -270,9 +312,9 @@ class FortunaRNG {
       remaining -= chunkSize;
       offset += chunkSize;
       // Add random event to the pool
-      this.addRandomEvent(255,
+      this.addRandomEvent(RESERVED_POOL_ID3,
         this.generateInt32(0, 31),
-        this.pseudoRandomData(POOL_SIZE));
+        this.pseudoRandomData(32));
     }
     return Buffer.concat(chunks);
   }

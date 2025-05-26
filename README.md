@@ -1,10 +1,13 @@
 # RNG Fortuna by Mikh
 
 This is a JavaScript library for cryptographic RNG (Fortuna).
+
 ## Installation from node.js
+
 ```
 npm i fortuna-rng-by-mikh
 ```
+
 ## Installation from git
 
 1. Clone the repository:
@@ -24,11 +27,11 @@ npm i fortuna-rng-by-mikh
 
 1. Run tests and create files:
     ```sh
-    npm run testfile
+    npm run test
     ```
 
     Criteria:
-    - **Test 1**: Create 4 binary output files from RNG, each 10MB
+    - **Test 1**: Create 4mb binary output files from RNG
     - **Test 2 (Dice)**: Create a file with 10 million lines (one number per line) in the range 1-6
     - **Test 3 (Slot)**: Create a file with 10 million lines (one number per line) in the range 0-499
     - **Test 4 (Card shuffle deck 1)**: Create a file with 10 million lines (one number per line) in the range 0-51
