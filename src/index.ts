@@ -64,8 +64,11 @@ class FortunaRNG {
     // Set the initial seed
     this.seedFromData(seed);
     // Initialize random event generation
-    setTimeout(this.addRandomEventID1, 457);
-    setTimeout(this.addRandomEventID2, 503);
+    const t1 = setTimeout(this.addRandomEventID1, 457);
+    const t2 = setTimeout(this.addRandomEventID2, 503);
+    // Unref to allow graceful shutdown
+    t1.unref();
+    t2.unref();
   }
 
   /**
@@ -73,12 +76,14 @@ class FortunaRNG {
    * This event adds cryptographically strong pseudorandom data.
    */
   private addRandomEventID1 = (): void => {
-    // add cryptographically strong data
+    // Add cryptographically strong data
     this.addRandomEvent(RESERVED_POOL_ID1,
       crypto.randomInt(NUM_POOLS),
       crypto.randomBytes(32));
-    // schedule next random event
-    setTimeout(this.addRandomEventID2, 503);
+    // Schedule next random event
+    const t = setTimeout(this.addRandomEventID2, 503);
+    // Unref to allow graceful shutdown
+    t.unref();
   }
 
   /**
@@ -86,13 +91,15 @@ class FortunaRNG {
    * This event adds the current time in milliseconds.
    */
   private addRandomEventID2 = (): void => {
-    // add current time accurate to ms or in clock ticks
+    // Add current time accurate to ms or in clock ticks
     var now = Date.now();
     this.addRandomEvent(RESERVED_POOL_ID2,
       crypto.randomInt(NUM_POOLS),
       Buffer.from(now.toString()));
-    // schedule next random event
-    setTimeout(this.addRandomEventID1, 457);
+    // Schedule next random event
+    const t = setTimeout(this.addRandomEventID1, 457);
+    // Unref to allow graceful shutdown
+    t.unref();
   }
 
   /**
