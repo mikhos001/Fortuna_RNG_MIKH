@@ -14,11 +14,13 @@ const RESEED_INTERVAL_MS = 100;
 const POOL_SIZE = 64;
 
 // Reserved for internal random events (pseudorandom data)
-const RESERVED_POOL_ID1 = 253;
+const RESERVED_POOL_ID1 = 252;
 // Reserved for internal random events (time in ms)
-const RESERVED_POOL_ID2 = 254;
+const RESERVED_POOL_ID2 = 253;
 // Reserved for internal random events (random data from generator)
-const RESERVED_POOL_ID3 = 255;
+const RESERVED_POOL_ID3 = 254;
+// Reserved for internal random events (random data from generator)
+const RESERVED_POOL_ID4 = 255;
 
 // Constants for generateInt32 2^32, the number of possible uint32 values
 const UINT32_MAX_COUNT = 0x100000000;
@@ -66,13 +68,16 @@ class FortunaRNG {
     // Initialize random event generation
     const t1 = setTimeout(this.addRandomEventID1, 457);
     const t2 = setTimeout(this.addRandomEventID2, 503);
+    const t3 = setTimeout(this.addRandomEventID3, 521);
+
     // Unref to allow graceful shutdown
     t1.unref();
     t2.unref();
+    t3.unref();
   }
 
   /**
-   * Adds a random event with source 253 to the generator's state.
+   * Adds a random event with source ID1 to the generator's state.
    * This event adds cryptographically strong pseudorandom data.
    */
   private addRandomEventID1 = (): void => {
@@ -87,7 +92,7 @@ class FortunaRNG {
   }
 
   /**
-   * Adds a random event with source 254 to the generator's state.
+   * Adds a random event with source ID2 to the generator's state.
    * This event adds the current time in milliseconds.
    */
   private addRandomEventID2 = (): void => {
@@ -96,6 +101,22 @@ class FortunaRNG {
     this.addRandomEvent(RESERVED_POOL_ID2,
       crypto.randomInt(NUM_POOLS),
       Buffer.from(now.toString()));
+    // Schedule next random event
+    const t = setTimeout(this.addRandomEventID3, 521);
+    // Unref to allow graceful shutdown
+    t.unref();
+  }
+
+  /**
+ * Adds a random event with source ID3 to the generator's state.
+ * This event adds the current process ID and process CPU usage.
+ */
+  private addRandomEventID3 = (): void => {
+    // Get current process ID and process CPU usage as string
+    var data = `${process.pid}${process.cpuUsage().system}${process.cpuUsage().user}`;
+    this.addRandomEvent(RESERVED_POOL_ID3,
+      crypto.randomInt(NUM_POOLS),
+      Buffer.from(data));
     // Schedule next random event
     const t = setTimeout(this.addRandomEventID1, 457);
     // Unref to allow graceful shutdown
@@ -250,7 +271,7 @@ class FortunaRNG {
    * Corresponds to ADDRANDOMEVENT in the text.
    * The caller (entropy source) is responsible for choosing the correct poolId
    * based on round-robin distribution.
-   * @param sourceId Source identifier (0-252) 253, 254, 255 are reserved.
+   * @param sourceId Source identifier (0-251) 252, 253, 254, 255 are reserved.
    * @param poolId Pool index (0-31).
    * @param eventData The entropy data (1-32 bytes).
    */
@@ -319,7 +340,7 @@ class FortunaRNG {
       remaining -= chunkSize;
       offset += chunkSize;
       // Add random event to the pool
-      this.addRandomEvent(RESERVED_POOL_ID3,
+      this.addRandomEvent(RESERVED_POOL_ID4,
         this.generateInt32(0, 31),
         this.pseudoRandomData(32));
     }
