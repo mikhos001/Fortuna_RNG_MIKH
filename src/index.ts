@@ -113,7 +113,8 @@ class FortunaRNG {
  */
   private addRandomEventID3 = (): void => {
     // Get current process ID and process CPU usage as string
-    var data = `${process.pid}${process.cpuUsage().system}${process.cpuUsage().user}`;
+    const { system, user } = process.cpuUsage();
+    const data = `${process.pid}${system}${user}`;
     this.addRandomEvent(RESERVED_POOL_ID3,
       crypto.randomInt(NUM_POOLS),
       Buffer.from(data));
